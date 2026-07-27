@@ -71,8 +71,17 @@
   `_detect_environment` in `experiments/manifest.py` now delegates to
   `capture_environment`. Added `tests/test_manifest_environment.py`
   (16 tests).
+- **V037-006 — proper CLI installation via entry points**: added
+  `[project.scripts]` to `pyproject.toml` with 5 entry points
+  (`daph-autolearn`, `daph-evaluate-routes`, `daph-build-oracles`,
+  `daph-tune-steering`, `daph-random-control`). Created
+  `src/daph_learning/cli/` with one thin module per entry point that
+  loads the corresponding `scripts/*.py` by file path via
+  `importlib.util` and calls its `main()`. After `pip install -e .`,
+  the commands are on PATH and `PYTHONPATH=src:.` is no longer
+  required. Added `tests/test_cli_entrypoints.py` (13 tests).
 
-Test count: 364 passed, 1 skipped (was 320 + 4 pre-existing failures).
+Test count: 377 passed, 1 skipped (was 320 + 4 pre-existing failures).
 
 # 0.3.5 (manifest + claims patch)
 

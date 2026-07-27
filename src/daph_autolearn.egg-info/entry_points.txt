@@ -1,0 +1,6 @@
+[console_scripts]
+daph-autolearn = daph_learning.cli.autolearn:main
+daph-build-oracles = daph_learning.cli.build_oracles:main
+daph-evaluate-routes = daph_learning.cli.evaluate_routes:main
+daph-random-control = daph_learning.cli.random_control:main
+daph-tune-steering = daph_learning.cli.tune_steering:main

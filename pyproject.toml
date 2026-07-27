@@ -26,6 +26,13 @@ full = [
   "pytest>=8.0",
 ]
 
+[project.scripts]
+daph-autolearn = "daph_learning.cli.autolearn:main"
+daph-evaluate-routes = "daph_learning.cli.evaluate_routes:main"
+daph-build-oracles = "daph_learning.cli.build_oracles:main"
+daph-tune-steering = "daph_learning.cli.tune_steering:main"
+daph-random-control = "daph_learning.cli.random_control:main"
+
 [tool.setuptools]
 package-dir = {"" = "src"}
 
