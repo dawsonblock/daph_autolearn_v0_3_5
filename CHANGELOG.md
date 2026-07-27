@@ -1,5 +1,43 @@
 # 0.3.8 (AutoLearn v2 core)
 
+- **DEF-04 GPU Qualification Pre-Flight (Phase A)**:
+    - **A1/A2 — production configs**: added
+      `experiments/daph_latent_memory_v0_5_2/configs/qwen25_1_5b.yaml`
+      (Qwen2.5-1.5B-Instruct, batch_size=32, layer=20) and
+      `qwen25_3b.yaml` (Qwen2.5-3B-Instruct, batch_size=16, layer=24)
+      targeting the repair plan §4 Task 4.1 specification. Both configs
+      set `seed_count: 10`, `functional_negatives: 3`,
+      `unfreeze_fraction: 0.3`, and the new
+      `latent_relative_norm_limit: 0.65` (DEF-02 latent injection clamp).
+      Legacy `alignment_weight` is absent (DEF-03). New test file
+      `tests/test_qualification_configs.py` (28 tests) validates all
+      required fields, the Gate 6 minimum seed count, the corruption-α
+      endpoints (0.0, 0.5, 2.0), and per-model batch sizes.
+    - **A3 — functional margin calibration**: new script
+      `experiments/daph_latent_memory_v0_5_2/scripts/calibrate_margin.py`
+      implements the repair plan §3 Task 3.2 procedure
+      `m = 0.5 * (r_shuffled_mean - r_matched_mean)` on a 100-example IID
+      probe set with an untrained instance encoder. Falls back to a 0.5-nat
+      floor when the gap is non-positive (no causal signal at init).
+      `train_instance_encoder.py` gains `--calibrate-margin` (inline probe)
+      and `--margin-override <path>` (load a calibration JSON) flags; the
+      calibration report is persisted next to the Phase B checkpoint for
+      provenance. New test file `tests/test_calibrate_margin.py` (4 tests)
+      validates the calibration logic with a fake model (no GPU required).
+    - **A4 — LatentInjector safety clamp (DEF-02 extension)**:
+      `experiments/daph_latent_memory_v0_5_2/src/daph_latent_memory/latent/injection.py`
+      gains `set_relative_norm_limit(limit)` and per-row latent norm
+      clamping in `build()`. When `limit > 0`, each row's latent is scaled
+      by `min(1, limit * ||prompt_emb_i|| / ||latent_i||)` so the injected
+      latent norm never exceeds `limit * ||prompt_emb||`. This extends the
+      v0.3.8 DEF-02 steering safety guarantee from the residual-hook path
+      to the latent-injection path. The per-row multipliers are recorded in
+      `last_clamp_multipliers` for telemetry. `train_skill_bank.py`,
+      `train_instance_encoder.py`, and `train_joint.py` read
+      `training.latent_relative_norm_limit` from the config and enable the
+      clamp when > 0. New test file `tests/test_injection_safety.py`
+      (10 tests) validates default-off behavior, per-row clamping,
+      geometry preservation, and label/mask invariance.
 - **Engineering Repair & Remediation (DEF-01..DEF-05)**:
     - **DEF-01 — full-sequence logit route scoring** (Phase 1 Task 1.1):
       `src/daph_learning/routing/logit_router.py` gains

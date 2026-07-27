@@ -5,7 +5,7 @@ Freeze skill bank. Train instance encoder.
 Desired: z_instance,a ≠ z_instance,b even when both are multiplication.
 """
 from __future__ import annotations
-import argparse,math,random
+import argparse,json,math,random
 from pathlib import Path
 import torch
 from torch.optim import AdamW
@@ -30,6 +30,17 @@ def main():
     ap.add_argument("--dataset",required=True)
     ap.add_argument("--skill-checkpoint",required=True)
     ap.add_argument("--output",required=True)
+    ap.add_argument("--calibrate-margin",action="store_true",
+                    help="v0.3.8 Task 3.2: run the margin calibration probe before training. "
+                         "Computes m = 0.5 * (r_shuffled_mean - r_matched_mean) on a 100-example "
+                         "probe set with the frozen skill bank + untrained instance encoder, "
+                         "then overrides functional_margin in-memory.")
+    ap.add_argument("--margin-override",default=None,
+                    help="Path to a calibration JSON (from calibrate_margin.py) to override "
+                         "functional_margin. Takes precedence over --calibrate-margin and the "
+                         "config value.")
+    ap.add_argument("--probe-size",type=int,default=100,
+                    help="Probe set size for --calibrate-margin (default 100).")
     args=ap.parse_args()
     cfg=load_config(args.config);outdir=Path(args.output);outdir.mkdir(parents=True,exist_ok=True)
     random.seed(cfg["seed"]);torch.manual_seed(cfg["seed"])
@@ -49,11 +60,39 @@ def main():
     # Composer
     composer=make_composer(mem.get("composition","gated"),mem["skill_dim"],mem["instance_dim"],hidden,mem["latent_tokens"]).to(device)
     injector=LatentInjector(model)
+    # v0.3.8 DEF-02: wire the latent injection safety clamp if configured.
+    relative_norm_limit=float(tcfg.get("latent_relative_norm_limit",0.0))
+    if relative_norm_limit > 0:
+        injector.set_relative_norm_limit(relative_norm_limit)
     params=list(instance_encoder.parameters())+list(composer.parameters())
     opt=AdamW(params,lr=tcfg["learning_rate"],weight_decay=tcfg["weight_decay"])
     all_train=[x for x in load_jsonl(args.dataset) if x.split=="train"]
     func_weight=tcfg.get("functional_weight",0.5);dis_weight=tcfg.get("disentangle_weight",0.1)
     func_margin=tcfg.get("functional_margin",0.0);func_negs=tcfg.get("functional_negatives",3)
+
+    # v0.3.8 Task 3.2: resolve the functional margin. Precedence:
+    #   1. --margin-override <path>  (explicit calibration file)
+    #   2. --calibrate-margin         (run the probe inline now)
+    #   3. config training.functional_margin
+    if args.margin_override is not None:
+        import json as _json
+        with open(args.margin_override) as _f:
+            calib=_json.load(_f)
+        func_margin=float(calib["functional_margin"])
+        print(f"[margin] loaded from {args.margin_override}: m={func_margin:.4f} nats")
+    elif args.calibrate_margin:
+        from scripts.calibrate_margin import calibrate as _calibrate
+        calib=_calibrate(cfg,args.dataset,probe_size=args.probe_size)
+        func_margin=float(calib["functional_margin"])
+        print(f"[margin] calibrated inline: m={func_margin:.4f} nats "
+              f"(r_matched={calib['r_matched_mean']:.4f}, "
+              f"r_shuffled={calib['r_shuffled_mean']:.4f}, "
+              f"gap={calib['gap']:.4f}, used_floor={calib['used_floor']})")
+        # Persist the calibration alongside the checkpoint for provenance.
+        with open(outdir/"margin_calibration.json","w") as _f:
+            _json.dump(calib,_f,indent=2)
+    else:
+        print(f"[margin] from config: m={func_margin:.4f} nats")
     for epoch in range(tcfg["epochs"]):
         instance_encoder.train();composer.train();opt.zero_grad(set_to_none=True)
         rng=random.Random(cfg["seed"]+epoch)

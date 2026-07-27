@@ -1,0 +1,66 @@
+# Qwen2.5-1.5B-Instruct configuration for DAPH Latent Memory v0.5.2
+# GPU qualification target (DEF-04, repair plan §4 Task 4.1).
+#
+# Model: Qwen/Qwen2.5-1.5B-Instruct (28 layers, hidden=1536)
+# Steering / injection layer: 20 (per repair plan §4 Task 4.1)
+# Batch size: 32 (per repair plan §4 Task 4.1)
+# Seeds: 10 (per repair plan §4 Task 4.1; Gate 6 requires >= 5)
+seed: 1337
+model:
+  name: "Qwen/Qwen2.5-1.5B-Instruct"
+  dtype: "bfloat16"
+  trust_remote_code: true
+  device_map: "auto"
+memory:
+  latent_tokens: 8
+  encoder_width: 512
+  encoder_layers: 2
+  dropout: 0.0
+  max_state_tokens: 256
+  # v0.5.2 two-channel state
+  skill_dim: 256
+  instance_dim: 256
+  num_skills: 6  # add, subtract, multiply, divide, verify, decompose
+  composition: "gated"  # "linear" or "gated"
+training:
+  epochs: 3
+  batch_size: 32
+  grad_accum_steps: 1
+  learning_rate: 0.0003
+  weight_decay: 0.01
+  # v0.5.2: alignment_weight REMOVED — was the cause of non-specific behavior
+  answer_weight: 1.0
+  functional_weight: 0.5        # λ_f — functional mismatch loss
+  disentangle_weight: 0.1      # λ_d — skill/instance subspace orthogonality
+  invariance_weight: 0.2       # Phase A only — skill invariance across instances
+  functional_margin: 0.0       # calibrated from matched-vs-shuffled gap (nats); use --calibrate-margin to auto-set
+  functional_negatives: 3      # K hard negatives per step (4x forward cost)
+  max_prompt_tokens: 384
+  max_answer_tokens: 48
+  teacher_layer_fraction: 0.75
+  gradient_clip: 1.0
+  val_holdout_fraction: 0.15
+  val_seed: 1337
+  selection_metric: "val_loss"
+  # Phase C freeze anneal
+  unfreeze_fraction: 0.3  # fraction of Phase C steps over which skill bank unfreezes
+  # v0.3.8 DEF-02: latent injection safety clamp. When > 0, LatentInjector
+  # scales down any latent whose L2 norm exceeds relative_norm_limit * ||prompt_emb||_2.
+  # 0 disables the clamp (preserves v0.5.2 baseline behavior).
+  latent_relative_norm_limit: 0.65
+evaluation:
+  bootstrap_samples: 1000
+  leakage_max_accuracy: 0.75
+  generation_max_new_tokens: 48
+  temperature: 0.0
+  embeds_generate_includes_prefix: false
+  # Causal eval
+  corruption_alphas: [0.00, 0.01, 0.025, 0.05, 0.10, 0.25, 0.50, 1.00, 2.00]
+  null_permutations: 200       # for CSS null distribution
+  null_percentile: 99          # CSS_null_99
+  css_floor_pp: 5.0           # min CSS gate in percentage points
+  seed_count: 10              # 10 seeds for headline claims (Gate 6 needs >= 5)
+utility:
+  accuracy_weight: 1.0
+  latency_weight: 0.01
+  token_weight: 0.0001

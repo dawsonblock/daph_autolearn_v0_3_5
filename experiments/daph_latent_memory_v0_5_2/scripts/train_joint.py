@@ -47,6 +47,10 @@ def main():
     sk_ckpt=load_checkpoint(args.skill_checkpoint);skill_bank.load_state_dict(sk_ckpt["state_dict"]["skill_bank"])
     inst_ckpt=load_checkpoint(args.instance_checkpoint);instance_encoder.load_state_dict(inst_ckpt["state_dict"]["instance_encoder"]);composer.load_state_dict(inst_ckpt["state_dict"]["composer"])
     injector=LatentInjector(model)
+    # v0.3.8 DEF-02: wire the latent injection safety clamp if configured.
+    relative_norm_limit=float(tcfg.get("latent_relative_norm_limit",0.0))
+    if relative_norm_limit > 0:
+        injector.set_relative_norm_limit(relative_norm_limit)
     params=list(skill_bank.parameters())+list(instance_encoder.parameters())+list(composer.parameters())+list(router.parameters())
     opt=AdamW(params,lr=tcfg["learning_rate"],weight_decay=tcfg["weight_decay"])
     all_train=[x for x in load_jsonl(args.dataset) if x.split=="train"]

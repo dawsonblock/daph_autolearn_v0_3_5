@@ -36,6 +36,10 @@ def main():
     skill_bank=SkillBank(num_skills,latent_tokens,skill_dim).to(device)
     skill_proj=torch.nn.Linear(skill_dim,hidden,bias=False).to(device)
     injector=LatentInjector(model)
+    # v0.3.8 DEF-02: wire the latent injection safety clamp if configured.
+    relative_norm_limit=float(cfg["training"].get("latent_relative_norm_limit",0.0))
+    if relative_norm_limit > 0:
+        injector.set_relative_norm_limit(relative_norm_limit)
     opt=AdamW(list(skill_bank.parameters())+list(skill_proj.parameters()),lr=cfg["training"]["learning_rate"],weight_decay=cfg["training"]["weight_decay"])
     tcfg=cfg["training"];all_train=[x for x in load_jsonl(args.dataset) if x.split=="train"]
     inv_weight=tcfg.get("invariance_weight",0.2)
