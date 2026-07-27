@@ -181,11 +181,13 @@ def compute_candidate_update(
     # Pull-back to v-space: scale by 1/||v|| so the step is in v units.
     grad_v = grad / vnorm
 
-    # Regularization toward parent: -2 lambda (v - v_parent). For a
-    # candidate whose parent is the current vector, this term is zero at
-    # the start and grows as v moves away, keeping updates conservative.
-    reg = -2.0 * config.lambda_reg * (v_current - v_current)  # zero by construction
-    grad_v = grad_v + reg
+    # Regularization toward parent: -2 lambda (v - v_parent). At the
+    # starting point v == v_parent so this term is zero; it grows as v
+    # moves away. We include it so the objective (computed below) is
+    # consistent, but the gradient direction is dominated by the
+    # reward-gap signal. The trust-region clip is the primary
+    # conservative constraint on step size.
+    # (Regularization is handled in the objective function below.)
 
     # Normalize the gradient direction so eta controls the absolute step.
     grad_norm = float(np.linalg.norm(grad_v))

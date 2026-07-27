@@ -157,6 +157,7 @@ class ReplayBuffer:
         Regression anchors are preserved from eviction when possible so
         historical regression signals persist.
         """
+        evicted_any = False
         while len(self._entries) > self.config.capacity:
             # Find the oldest non-anchor entry.
             evict_idx = None
@@ -168,9 +169,10 @@ class ReplayBuffer:
                 # Everything is an anchor; evict the oldest anchor anyway.
                 evict_idx = 0
             evicted = self._entries.pop(evict_idx)
-            self._fingerprints.pop(evicted.task_fingerprint, None)
             self._regression_anchors.discard(evicted.experience_id)
-            # Rebuild fingerprint index (indices shifted).
+            evicted_any = True
+        if evicted_any:
+            # Rebuild fingerprint index once after all evictions.
             self._fingerprints = {
                 e.task_fingerprint: i for i, e in enumerate(self._entries)
             }
@@ -245,8 +247,6 @@ class ReplayBuffer:
             ]
             rng.shuffle(anchor_idxs)
             for i in anchor_idxs:
-                if len([c for c in chosen if c in {i}]) >= n_anchor:
-                    break
                 if sum(1 for c in chosen if self._entries[c].experience_id in self._regression_anchors) >= n_anchor:
                     break
                 chosen.add(i)
@@ -338,6 +338,7 @@ class ReplayBuffer:
             "config": asdict(self.config),
             "entries": [e.to_dict() for e in self._entries],
             "regression_anchors": sorted(self._regression_anchors),
+            "rng_state": self._rng.getstate(),
         }
 
     @classmethod
@@ -349,6 +350,18 @@ class ReplayBuffer:
             buf.add(_experience_from_dict(e_dict))
         for aid in data.get("regression_anchors", []):
             buf._regression_anchors.add(aid)
+        # Restore RNG state for reproducible sampling on resume.
+        rng_state = data.get("rng_state")
+        if rng_state is not None:
+            # JSON converts tuples to lists; reconstruct the proper format
+            # expected by random.Random.setstate(): (version, internal_tuple, gauss_next)
+            if isinstance(rng_state, list) and len(rng_state) == 3:
+                version = int(rng_state[0])
+                internal = tuple(int(x) for x in rng_state[1]) if isinstance(rng_state[1], list) else rng_state[1]
+                gauss = rng_state[2]
+                buf._rng.setstate((version, internal, gauss))
+            else:
+                buf._rng.setstate(rng_state)
         return buf
 
 

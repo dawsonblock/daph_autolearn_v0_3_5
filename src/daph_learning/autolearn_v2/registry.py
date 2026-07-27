@@ -360,6 +360,10 @@ class PolicyRegistry:
         # just refresh the accepted_at). On disk we write a rollback
         # marker file.
         self._records[to_policy_id] = record
+        # Move the rolled-back-to policy to the end of accepted_order
+        # (it is now the active policy) without duplicating the entry.
+        if to_policy_id in self._accepted_order:
+            self._accepted_order.remove(to_policy_id)
         self._accepted_order.append(to_policy_id)
         if self.store_dir:
             marker = os.path.join(self.store_dir, f"{to_policy_id}.rollback.{ts}.json")

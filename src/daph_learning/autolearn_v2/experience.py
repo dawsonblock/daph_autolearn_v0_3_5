@@ -86,9 +86,12 @@ class BackendOutcome:
 def fingerprint_task(task: Mapping[str, Any]) -> str:
     """Deterministic SHA-256 fingerprint of a task's identity-relevant fields.
 
-    Only fields that define the task (not routing labels or oracle fields
-    that would leak the answer into the fingerprint) are hashed. This
-    supports replay deduplication and benchmark leak detection.
+    Fields that define the task are hashed. ``expected`` is included
+    because two tasks with the same specification but different answers
+    are genuinely different tasks for deduplication purposes. Note that
+    this means the fingerprint contains the answer; callers using it for
+    leak detection should be aware of this. Routing labels and oracle
+    fields (e.g. ``utility_oracle``) are excluded.
     """
     identity_keys = (
         "task_id",

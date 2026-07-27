@@ -44,6 +44,7 @@ from .counterfactual import (
     default_symbolic_backend,
 )
 from .experience import Experience
+from .invariants import check_candidate_not_active_until_accepted, check_split_disjoint
 from .observability import IterationTelemetry, TelemetryLogger, counterfactual_disagreement_rate
 from .policies.base import PolicyMetrics
 from .policies.static_vector import SingleVectorPolicy
@@ -172,6 +173,7 @@ def _default_validation_fn(
     utility_config: UtilityConfig,
     representation_fn: RepresentationFn,
     domain_key: str,
+    llm_backend_fn: LLMBackendFn | None = None,
 ) -> PolicyMetrics:
     """Default validation evaluator.
 
@@ -202,13 +204,10 @@ def _default_validation_fn(
         if route == "symbolic":
             outcome = default_symbolic_backend(task)
         elif route == "llm":
-            # Use the task's expected value to verify via the typed
-            # verifier. The LLM "output" here is a placeholder: in real
-            # runs the engine is given an llm_backend_fn. For validation
-            # we score the *policy's routing decision* against the
-            # optimal action derived from the task's oracle fields when
-            # available, falling back to utility of the executed backend.
-            outcome = _llm_validation_outcome(task)
+            if llm_backend_fn is not None:
+                outcome = llm_backend_fn(task)
+            else:
+                outcome = _llm_validation_outcome(task)
         else:  # abstain
             # Abstention: no backend executed. Utility is 0 (no
             # correctness, no failure penalty, no cost).
@@ -342,16 +341,32 @@ def run_autolearn_v2(
         if hidden <= 0 and train_tasks:
             hidden = int(representation_fn(train_tasks[0]).shape[-1])
 
+    # Persist the inferred hidden_size back into config so that
+    # manifest and checkpoint records are accurate.
+    if hidden != config.hidden_size:
+        from dataclasses import replace
+        config = replace(config, hidden_size=hidden)
+
+    # Scientific invariants: train/val/test must be pairwise disjoint.
+    train_ids = [str(t.get("task_id", "")) for t in train_tasks]
+    val_ids = [str(t.get("task_id", "")) for t in val_tasks]
+    test_ids = [str(t.get("task_id", "")) for t in test_tasks] if test_tasks else []
+    check_split_disjoint(train_ids, val_ids, test_ids)
+
     # Resolve the LLM backend.
+    conservative_llm = False
     if llm_backend_fn is None:
         llm_backend_fn = _conservative_llm_backend
+        conservative_llm = True
 
     # Resolve the validation evaluator.
     if validation_fn is None:
         validation_fn = (
-            lambda policy, vtasks, _u=config.reward, _r=representation_fn, _d=config.domain_key:
+            lambda policy, vtasks, _u=config.reward, _r=representation_fn, _d=config.domain_key,
+                _llm=None if conservative_llm else llm_backend_fn:
                 _default_validation_fn(policy, vtasks, utility_config=_u,
-                                       representation_fn=_r, domain_key=_d)
+                                       representation_fn=_r, domain_key=_d,
+                                       llm_backend_fn=_llm)
         )
 
     # Registry + initial policy.
@@ -405,6 +420,9 @@ def run_autolearn_v2(
             # 1. Counterfactual experience collection on TRAINING data.
             # ----------------------------------------------------------
             created_at = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
+            # Capture the active policy ID *before* the acceptance decision
+            # so telemetry/history record which policy was superseded.
+            pre_decision_active_id = active.policy_id
             # Route with the active policy to record selected_action.
             selected_actions: dict[str, str] = {}
             for task in train_tasks:
@@ -459,10 +477,12 @@ def run_autolearn_v2(
                 active = candidate.with_metrics(candidate_metrics)
             else:
                 registry.reject(candidate, decision)
+                # Invariant: candidate must differ from active when rejected.
+                check_candidate_not_active_until_accepted(active, candidate)
 
             history.append({
                 "iteration": iteration,
-                "active_policy_id": active.policy_id,
+                "active_policy_id": pre_decision_active_id,
                 "candidate_policy_id": candidate.policy_id,
                 "accepted": decision.accepted,
                 "reason_codes": list(decision.reason_codes),
@@ -475,7 +495,7 @@ def run_autolearn_v2(
             route_rates = _route_rates_from_experiences(experiences)
             tel = IterationTelemetry(
                 iteration=iteration,
-                active_policy_id=active.policy_id,
+                active_policy_id=pre_decision_active_id,
                 candidate_policy_id=candidate.policy_id,
                 replay_size=len(replay),
                 new_experience_count=len(experiences),
@@ -518,7 +538,7 @@ def run_autolearn_v2(
                     training_metrics=[t.to_dict() for t in iterations],
                     history=history,
                     config_dict=config.to_dict(),
-                    saved_at=created_at,
+                    saved_at=time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
                 )
                 save_checkpoint(state, config.checkpoint_path)
     finally:

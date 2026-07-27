@@ -57,17 +57,44 @@ class Baseline:
 class AlwaysLLM(Baseline):
     name = "always_llm"
 
+    def __init__(self, utility_config: UtilityConfig | None = None,
+                 llm_backend_fn: Callable | None = None) -> None:
+        self.utility_config = utility_config or UtilityConfig()
+        self.llm_backend_fn = llm_backend_fn
+
     def score(self, tasks: Sequence[Mapping[str, Any]]) -> BaselineResult:
         routes = ["llm"] * len(tasks)
-        return BaselineResult(name=self.name, routes=routes, utility=0.0, n_samples=len(tasks))
+        utilities: list[float] = []
+        for t in tasks:
+            if self.llm_backend_fn is not None:
+                outcome = self.llm_backend_fn(t)
+                utilities.append(backend_reward(outcome, self.utility_config))
+            else:
+                utilities.append(0.0)
+        return BaselineResult(
+            name=self.name, routes=routes,
+            utility=float(sum(utilities) / len(utilities)) if utilities else 0.0,
+            n_samples=len(tasks),
+        )
 
 
 class AlwaysSymbolic(Baseline):
     name = "always_symbolic"
 
+    def __init__(self, utility_config: UtilityConfig | None = None) -> None:
+        self.utility_config = utility_config or UtilityConfig()
+
     def score(self, tasks: Sequence[Mapping[str, Any]]) -> BaselineResult:
         routes = ["symbolic"] * len(tasks)
-        return BaselineResult(name=self.name, routes=routes, utility=0.0, n_samples=len(tasks))
+        utilities: list[float] = []
+        for t in tasks:
+            outcome = default_symbolic_backend(t)
+            utilities.append(backend_reward(outcome, self.utility_config))
+        return BaselineResult(
+            name=self.name, routes=routes,
+            utility=float(sum(utilities) / len(utilities)) if utilities else 0.0,
+            n_samples=len(tasks),
+        )
 
 
 class HeuristicRouter(Baseline):
@@ -75,12 +102,30 @@ class HeuristicRouter(Baseline):
 
     name = "heuristic_router"
 
+    def __init__(self, utility_config: UtilityConfig | None = None,
+                 llm_backend_fn: Callable | None = None) -> None:
+        self.utility_config = utility_config or UtilityConfig()
+        self.llm_backend_fn = llm_backend_fn
+
     def score(self, tasks: Sequence[Mapping[str, Any]]) -> BaselineResult:
-        routes = [
-            "symbolic" if (set(t.get("capability_ids") or []) & {"integer_arithmetic", "modular_multiplication"}) else "llm"
-            for t in tasks
-        ]
-        return BaselineResult(name=self.name, routes=routes, utility=0.0, n_samples=len(tasks))
+        routes: list[str] = []
+        utilities: list[float] = []
+        for t in tasks:
+            route = "symbolic" if (set(t.get("capability_ids") or []) & {"integer_arithmetic", "modular_multiplication"}) else "llm"
+            routes.append(route)
+            if route == "symbolic":
+                outcome = default_symbolic_backend(t)
+                utilities.append(backend_reward(outcome, self.utility_config))
+            elif self.llm_backend_fn is not None:
+                outcome = self.llm_backend_fn(t)
+                utilities.append(backend_reward(outcome, self.utility_config))
+            else:
+                utilities.append(0.0)
+        return BaselineResult(
+            name=self.name, routes=routes,
+            utility=float(sum(utilities) / len(utilities)) if utilities else 0.0,
+            n_samples=len(tasks),
+        )
 
 
 class OracleRouter(Baseline):
@@ -114,7 +159,21 @@ class OracleRouter(Baseline):
                 routes.append("symbolic" if r_sym >= r_llm else "llm")
             else:
                 routes.append("symbolic" if r_sym >= 0 else "llm")
-        return BaselineResult(name=self.name, routes=routes, utility=0.0, n_samples=len(tasks))
+        utilities: list[float] = []
+        for t, route in zip(tasks, routes):
+            if route == "symbolic":
+                outcome = default_symbolic_backend(t)
+                utilities.append(backend_reward(outcome, self.utility_config))
+            elif self.llm_backend_fn is not None:
+                outcome = self.llm_backend_fn(t)
+                utilities.append(backend_reward(outcome, self.utility_config))
+            else:
+                utilities.append(0.0)
+        return BaselineResult(
+            name=self.name, routes=routes,
+            utility=float(sum(utilities) / len(utilities)) if utilities else 0.0,
+            n_samples=len(tasks),
+        )
 
 
 def oracle_gap_closure(
