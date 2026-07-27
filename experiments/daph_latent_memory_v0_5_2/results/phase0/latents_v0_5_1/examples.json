@@ -1,0 +1,1282 @@
+[
+  {
+    "example_id": "iid-0",
+    "split": "iid",
+    "question": "Solve for x: x + (3) = 21",
+    "answer": "18",
+    "operation": "linear_equation",
+    "skill_label": "subtract"
+  },
+  {
+    "example_id": "iid-1",
+    "split": "iid",
+    "question": "Solve for x: -4*x + (13) = -15",
+    "answer": "7",
+    "operation": "two_step_linear_equation",
+    "skill_label": "divide"
+  },
+  {
+    "example_id": "iid-2",
+    "split": "iid",
+    "question": "Solve for x: -5*x + (-7) = -27",
+    "answer": "4",
+    "operation": "two_step_linear_equation",
+    "skill_label": "divide"
+  },
+  {
+    "example_id": "iid-3",
+    "split": "iid",
+    "question": "Solve for x: x + (7) = 20",
+    "answer": "13",
+    "operation": "linear_equation",
+    "skill_label": "subtract"
+  },
+  {
+    "example_id": "iid-4",
+    "split": "iid",
+    "question": "Solve for x: x + (6) = 18",
+    "answer": "12",
+    "operation": "linear_equation",
+    "skill_label": "subtract"
+  },
+  {
+    "example_id": "iid-5",
+    "split": "iid",
+    "question": "Solve for x: -5*x + (-9) = 56",
+    "answer": "-13",
+    "operation": "two_step_linear_equation",
+    "skill_label": "divide"
+  },
+  {
+    "example_id": "iid-6",
+    "split": "iid",
+    "question": "Solve for x: -3*x + (-6) = -36",
+    "answer": "10",
+    "operation": "two_step_linear_equation",
+    "skill_label": "divide"
+  },
+  {
+    "example_id": "iid-7",
+    "split": "iid",
+    "question": "Solve for x: 7*x + (-15) = -155",
+    "answer": "-20",
+    "operation": "two_step_linear_equation",
+    "skill_label": "divide"
+  },
+  {
+    "example_id": "iid-8",
+    "split": "iid",
+    "question": "Solve for x: -6*x + (-7) = -25",
+    "answer": "3",
+    "operation": "two_step_linear_equation",
+    "skill_label": "divide"
+  },
+  {
+    "example_id": "iid-9",
+    "split": "iid",
+    "question": "Solve for x: -6*x + (13) = 67",
+    "answer": "-9",
+    "operation": "two_step_linear_equation",
+    "skill_label": "divide"
+  },
+  {
+    "example_id": "iid-10",
+    "split": "iid",
+    "question": "Solve for x: x + (9) = 6",
+    "answer": "-3",
+    "operation": "linear_equation",
+    "skill_label": "subtract"
+  },
+  {
+    "example_id": "iid-11",
+    "split": "iid",
+    "question": "Solve for x: x + (-11) = -7",
+    "answer": "4",
+    "operation": "linear_equation",
+    "skill_label": "subtract"
+  },
+  {
+    "example_id": "iid-12",
+    "split": "iid",
+    "question": "Solve for x: 2*x + (8) = -6",
+    "answer": "-7",
+    "operation": "two_step_linear_equation",
+    "skill_label": "divide"
+  },
+  {
+    "example_id": "iid-13",
+    "split": "iid",
+    "question": "Solve for x: -4*x + (-5) = 11",
+    "answer": "-4",
+    "operation": "two_step_linear_equation",
+    "skill_label": "divide"
+  },
+  {
+    "example_id": "iid-14",
+    "split": "iid",
+    "question": "Solve for x: -5*x + (2) = 77",
+    "answer": "-15",
+    "operation": "two_step_linear_equation",
+    "skill_label": "divide"
+  },
+  {
+    "example_id": "iid-15",
+    "split": "iid",
+    "question": "Solve for x: -7*x + (-8) = -134",
+    "answer": "18",
+    "operation": "two_step_linear_equation",
+    "skill_label": "divide"
+  },
+  {
+    "example_id": "iid-16",
+    "split": "iid",
+    "question": "Solve for x: x + (-6) = 2",
+    "answer": "8",
+    "operation": "linear_equation",
+    "skill_label": "subtract"
+  },
+  {
+    "example_id": "iid-17",
+    "split": "iid",
+    "question": "Solve for x: x + (14) = 23",
+    "answer": "9",
+    "operation": "linear_equation",
+    "skill_label": "subtract"
+  },
+  {
+    "example_id": "iid-18",
+    "split": "iid",
+    "question": "Solve for x: 9*x + (6) = -93",
+    "answer": "-11",
+    "operation": "two_step_linear_equation",
+    "skill_label": "divide"
+  },
+  {
+    "example_id": "iid-19",
+    "split": "iid",
+    "question": "Solve for x: 9*x + (2) = -34",
+    "answer": "-4",
+    "operation": "two_step_linear_equation",
+    "skill_label": "divide"
+  },
+  {
+    "example_id": "iid-20",
+    "split": "iid",
+    "question": "Solve for x: x + (-1) = -20",
+    "answer": "-19",
+    "operation": "linear_equation",
+    "skill_label": "subtract"
+  },
+  {
+    "example_id": "iid-21",
+    "split": "iid",
+    "question": "Solve for x: 5*x + (10) = 40",
+    "answer": "6",
+    "operation": "two_step_linear_equation",
+    "skill_label": "divide"
+  },
+  {
+    "example_id": "iid-22",
+    "split": "iid",
+    "question": "Solve for x: 2*x + (2) = 26",
+    "answer": "12",
+    "operation": "two_step_linear_equation",
+    "skill_label": "divide"
+  },
+  {
+    "example_id": "iid-23",
+    "split": "iid",
+    "question": "Solve for x: 8*x + (-1) = -161",
+    "answer": "-20",
+    "operation": "two_step_linear_equation",
+    "skill_label": "divide"
+  },
+  {
+    "example_id": "iid-24",
+    "split": "iid",
+    "question": "Solve for x: 3*x + (-9) = 24",
+    "answer": "11",
+    "operation": "two_step_linear_equation",
+    "skill_label": "divide"
+  },
+  {
+    "example_id": "iid-25",
+    "split": "iid",
+    "question": "Solve for x: -4*x + (8) = -52",
+    "answer": "15",
+    "operation": "two_step_linear_equation",
+    "skill_label": "divide"
+  },
+  {
+    "example_id": "iid-26",
+    "split": "iid",
+    "question": "Solve for x: 4*x + (12) = 56",
+    "answer": "11",
+    "operation": "two_step_linear_equation",
+    "skill_label": "divide"
+  },
+  {
+    "example_id": "iid-27",
+    "split": "iid",
+    "question": "Solve for x: x + (-3) = -13",
+    "answer": "-10",
+    "operation": "linear_equation",
+    "skill_label": "subtract"
+  },
+  {
+    "example_id": "iid-28",
+    "split": "iid",
+    "question": "Solve for x: x + (-3) = -12",
+    "answer": "-9",
+    "operation": "linear_equation",
+    "skill_label": "subtract"
+  },
+  {
+    "example_id": "iid-29",
+    "split": "iid",
+    "question": "Solve for x: x + (-7) = 5",
+    "answer": "12",
+    "operation": "linear_equation",
+    "skill_label": "subtract"
+  },
+  {
+    "example_id": "iid-30",
+    "split": "iid",
+    "question": "Solve for x: -3*x + (-7) = -34",
+    "answer": "9",
+    "operation": "two_step_linear_equation",
+    "skill_label": "divide"
+  },
+  {
+    "example_id": "iid-31",
+    "split": "iid",
+    "question": "Solve for x: x + (7) = 25",
+    "answer": "18",
+    "operation": "linear_equation",
+    "skill_label": "subtract"
+  },
+  {
+    "example_id": "iid-32",
+    "split": "iid",
+    "question": "Solve for x: 5*x + (-8) = -23",
+    "answer": "-3",
+    "operation": "two_step_linear_equation",
+    "skill_label": "divide"
+  },
+  {
+    "example_id": "iid-33",
+    "split": "iid",
+    "question": "Solve for x: -7*x + (-14) = 0",
+    "answer": "-2",
+    "operation": "two_step_linear_equation",
+    "skill_label": "divide"
+  },
+  {
+    "example_id": "iid-34",
+    "split": "iid",
+    "question": "Solve for x: -4*x + (1) = -7",
+    "answer": "2",
+    "operation": "two_step_linear_equation",
+    "skill_label": "divide"
+  },
+  {
+    "example_id": "iid-35",
+    "split": "iid",
+    "question": "Solve for x: 2*x + (15) = -23",
+    "answer": "-19",
+    "operation": "two_step_linear_equation",
+    "skill_label": "divide"
+  },
+  {
+    "example_id": "iid-36",
+    "split": "iid",
+    "question": "Solve for x: 8*x + (6) = 22",
+    "answer": "2",
+    "operation": "two_step_linear_equation",
+    "skill_label": "divide"
+  },
+  {
+    "example_id": "iid-37",
+    "split": "iid",
+    "question": "Solve for x: x + (10) = 4",
+    "answer": "-6",
+    "operation": "linear_equation",
+    "skill_label": "subtract"
+  },
+  {
+    "example_id": "iid-38",
+    "split": "iid",
+    "question": "Solve for x: -9*x + (-4) = 5",
+    "answer": "-1",
+    "operation": "two_step_linear_equation",
+    "skill_label": "divide"
+  },
+  {
+    "example_id": "iid-39",
+    "split": "iid",
+    "question": "Solve for x: x + (-15) = -25",
+    "answer": "-10",
+    "operation": "linear_equation",
+    "skill_label": "subtract"
+  },
+  {
+    "example_id": "iid-40",
+    "split": "iid",
+    "question": "Solve for x: -8*x + (-6) = 98",
+    "answer": "-13",
+    "operation": "two_step_linear_equation",
+    "skill_label": "divide"
+  },
+  {
+    "example_id": "iid-41",
+    "split": "iid",
+    "question": "Solve for x: 3*x + (-1) = 41",
+    "answer": "14",
+    "operation": "two_step_linear_equation",
+    "skill_label": "divide"
+  },
+  {
+    "example_id": "iid-42",
+    "split": "iid",
+    "question": "Solve for x: 8*x + (-14) = -70",
+    "answer": "-7",
+    "operation": "two_step_linear_equation",
+    "skill_label": "divide"
+  },
+  {
+    "example_id": "iid-43",
+    "split": "iid",
+    "question": "Solve for x: x + (-5) = -14",
+    "answer": "-9",
+    "operation": "linear_equation",
+    "skill_label": "subtract"
+  },
+  {
+    "example_id": "iid-44",
+    "split": "iid",
+    "question": "Solve for x: -6*x + (-1) = 59",
+    "answer": "-10",
+    "operation": "two_step_linear_equation",
+    "skill_label": "divide"
+  },
+  {
+    "example_id": "iid-45",
+    "split": "iid",
+    "question": "Solve for x: 3*x + (5) = 53",
+    "answer": "16",
+    "operation": "two_step_linear_equation",
+    "skill_label": "divide"
+  },
+  {
+    "example_id": "iid-46",
+    "split": "iid",
+    "question": "Solve for x: x + (-12) = -27",
+    "answer": "-15",
+    "operation": "linear_equation",
+    "skill_label": "subtract"
+  },
+  {
+    "example_id": "iid-47",
+    "split": "iid",
+    "question": "Solve for x: -6*x + (11) = -55",
+    "answer": "11",
+    "operation": "two_step_linear_equation",
+    "skill_label": "divide"
+  },
+  {
+    "example_id": "iid-48",
+    "split": "iid",
+    "question": "Solve for x: x + (-4) = 13",
+    "answer": "17",
+    "operation": "linear_equation",
+    "skill_label": "subtract"
+  },
+  {
+    "example_id": "iid-49",
+    "split": "iid",
+    "question": "Solve for x: -6*x + (-11) = 61",
+    "answer": "-12",
+    "operation": "two_step_linear_equation",
+    "skill_label": "divide"
+  },
+  {
+    "example_id": "iid-50",
+    "split": "iid",
+    "question": "Solve for x: -4*x + (12) = 72",
+    "answer": "-15",
+    "operation": "two_step_linear_equation",
+    "skill_label": "divide"
+  },
+  {
+    "example_id": "iid-51",
+    "split": "iid",
+    "question": "Solve for x: 3*x + (-5) = 46",
+    "answer": "17",
+    "operation": "two_step_linear_equation",
+    "skill_label": "divide"
+  },
+  {
+    "example_id": "iid-52",
+    "split": "iid",
+    "question": "Solve for x: x + (11) = 1",
+    "answer": "-10",
+    "operation": "linear_equation",
+    "skill_label": "subtract"
+  },
+  {
+    "example_id": "iid-53",
+    "split": "iid",
+    "question": "Solve for x: x + (-8) = -12",
+    "answer": "-4",
+    "operation": "linear_equation",
+    "skill_label": "subtract"
+  },
+  {
+    "example_id": "iid-54",
+    "split": "iid",
+    "question": "Solve for x: x + (4) = 19",
+    "answer": "15",
+    "operation": "linear_equation",
+    "skill_label": "subtract"
+  },
+  {
+    "example_id": "iid-55",
+    "split": "iid",
+    "question": "Solve for x: -4*x + (-9) = -5",
+    "answer": "-1",
+    "operation": "two_step_linear_equation",
+    "skill_label": "divide"
+  },
+  {
+    "example_id": "iid-56",
+    "split": "iid",
+    "question": "Solve for x: -5*x + (-3) = 87",
+    "answer": "-18",
+    "operation": "two_step_linear_equation",
+    "skill_label": "divide"
+  },
+  {
+    "example_id": "iid-57",
+    "split": "iid",
+    "question": "Solve for x: x + (-3) = 14",
+    "answer": "17",
+    "operation": "linear_equation",
+    "skill_label": "subtract"
+  },
+  {
+    "example_id": "iid-58",
+    "split": "iid",
+    "question": "Solve for x: x + (3) = 1",
+    "answer": "-2",
+    "operation": "linear_equation",
+    "skill_label": "subtract"
+  },
+  {
+    "example_id": "iid-59",
+    "split": "iid",
+    "question": "Solve for x: -3*x + (-12) = -60",
+    "answer": "16",
+    "operation": "two_step_linear_equation",
+    "skill_label": "divide"
+  },
+  {
+    "example_id": "iid-60",
+    "split": "iid",
+    "question": "Solve for x: x + (-14) = -34",
+    "answer": "-20",
+    "operation": "linear_equation",
+    "skill_label": "subtract"
+  },
+  {
+    "example_id": "iid-61",
+    "split": "iid",
+    "question": "Solve for x: x + (-10) = -18",
+    "answer": "-8",
+    "operation": "linear_equation",
+    "skill_label": "subtract"
+  },
+  {
+    "example_id": "iid-62",
+    "split": "iid",
+    "question": "Solve for x: -7*x + (-9) = -135",
+    "answer": "18",
+    "operation": "two_step_linear_equation",
+    "skill_label": "divide"
+  },
+  {
+    "example_id": "iid-63",
+    "split": "iid",
+    "question": "Solve for x: 8*x + (12) = 68",
+    "answer": "7",
+    "operation": "two_step_linear_equation",
+    "skill_label": "divide"
+  },
+  {
+    "example_id": "iid-64",
+    "split": "iid",
+    "question": "Solve for x: -5*x + (-3) = 57",
+    "answer": "-12",
+    "operation": "two_step_linear_equation",
+    "skill_label": "divide"
+  },
+  {
+    "example_id": "iid-65",
+    "split": "iid",
+    "question": "Solve for x: -8*x + (-11) = -75",
+    "answer": "8",
+    "operation": "two_step_linear_equation",
+    "skill_label": "divide"
+  },
+  {
+    "example_id": "iid-66",
+    "split": "iid",
+    "question": "Solve for x: x + (-4) = 14",
+    "answer": "18",
+    "operation": "linear_equation",
+    "skill_label": "subtract"
+  },
+  {
+    "example_id": "iid-67",
+    "split": "iid",
+    "question": "Solve for x: 6*x + (-10) = 86",
+    "answer": "16",
+    "operation": "two_step_linear_equation",
+    "skill_label": "divide"
+  },
+  {
+    "example_id": "iid-68",
+    "split": "iid",
+    "question": "Solve for x: -5*x + (14) = -86",
+    "answer": "20",
+    "operation": "two_step_linear_equation",
+    "skill_label": "divide"
+  },
+  {
+    "example_id": "iid-69",
+    "split": "iid",
+    "question": "Solve for x: 8*x + (-3) = 149",
+    "answer": "19",
+    "operation": "two_step_linear_equation",
+    "skill_label": "divide"
+  },
+  {
+    "example_id": "iid-70",
+    "split": "iid",
+    "question": "Solve for x: -8*x + (1) = -15",
+    "answer": "2",
+    "operation": "two_step_linear_equation",
+    "skill_label": "divide"
+  },
+  {
+    "example_id": "iid-71",
+    "split": "iid",
+    "question": "Solve for x: x + (-2) = -16",
+    "answer": "-14",
+    "operation": "linear_equation",
+    "skill_label": "subtract"
+  },
+  {
+    "example_id": "iid-72",
+    "split": "iid",
+    "question": "Solve for x: x + (-9) = -7",
+    "answer": "2",
+    "operation": "linear_equation",
+    "skill_label": "subtract"
+  },
+  {
+    "example_id": "iid-73",
+    "split": "iid",
+    "question": "Solve for x: x + (15) = 10",
+    "answer": "-5",
+    "operation": "linear_equation",
+    "skill_label": "subtract"
+  },
+  {
+    "example_id": "iid-74",
+    "split": "iid",
+    "question": "Solve for x: x + (-2) = 18",
+    "answer": "20",
+    "operation": "linear_equation",
+    "skill_label": "subtract"
+  },
+  {
+    "example_id": "iid-75",
+    "split": "iid",
+    "question": "Solve for x: -4*x + (10) = 2",
+    "answer": "2",
+    "operation": "two_step_linear_equation",
+    "skill_label": "divide"
+  },
+  {
+    "example_id": "iid-76",
+    "split": "iid",
+    "question": "Solve for x: -6*x + (-10) = -100",
+    "answer": "15",
+    "operation": "two_step_linear_equation",
+    "skill_label": "divide"
+  },
+  {
+    "example_id": "iid-77",
+    "split": "iid",
+    "question": "Solve for x: -5*x + (15) = -40",
+    "answer": "11",
+    "operation": "two_step_linear_equation",
+    "skill_label": "divide"
+  },
+  {
+    "example_id": "iid-78",
+    "split": "iid",
+    "question": "Solve for x: -4*x + (-6) = -54",
+    "answer": "12",
+    "operation": "two_step_linear_equation",
+    "skill_label": "divide"
+  },
+  {
+    "example_id": "iid-79",
+    "split": "iid",
+    "question": "Solve for x: 4*x + (-13) = -29",
+    "answer": "-4",
+    "operation": "two_step_linear_equation",
+    "skill_label": "divide"
+  },
+  {
+    "example_id": "iid-80",
+    "split": "iid",
+    "question": "Solve for x: x + (-10) = -15",
+    "answer": "-5",
+    "operation": "linear_equation",
+    "skill_label": "subtract"
+  },
+  {
+    "example_id": "iid-81",
+    "split": "iid",
+    "question": "Solve for x: 6*x + (-5) = -101",
+    "answer": "-16",
+    "operation": "two_step_linear_equation",
+    "skill_label": "divide"
+  },
+  {
+    "example_id": "iid-82",
+    "split": "iid",
+    "question": "Solve for x: x + (11) = 20",
+    "answer": "9",
+    "operation": "linear_equation",
+    "skill_label": "subtract"
+  },
+  {
+    "example_id": "iid-83",
+    "split": "iid",
+    "question": "Solve for x: -9*x + (12) = 120",
+    "answer": "-12",
+    "operation": "two_step_linear_equation",
+    "skill_label": "divide"
+  },
+  {
+    "example_id": "iid-84",
+    "split": "iid",
+    "question": "Solve for x: 9*x + (-7) = 38",
+    "answer": "5",
+    "operation": "two_step_linear_equation",
+    "skill_label": "divide"
+  },
+  {
+    "example_id": "iid-85",
+    "split": "iid",
+    "question": "Solve for x: -6*x + (-9) = 33",
+    "answer": "-7",
+    "operation": "two_step_linear_equation",
+    "skill_label": "divide"
+  },
+  {
+    "example_id": "iid-86",
+    "split": "iid",
+    "question": "Solve for x: 4*x + (11) = -25",
+    "answer": "-9",
+    "operation": "two_step_linear_equation",
+    "skill_label": "divide"
+  },
+  {
+    "example_id": "iid-87",
+    "split": "iid",
+    "question": "Solve for x: x + (8) = -8",
+    "answer": "-16",
+    "operation": "linear_equation",
+    "skill_label": "subtract"
+  },
+  {
+    "example_id": "iid-88",
+    "split": "iid",
+    "question": "Solve for x: x + (12) = 13",
+    "answer": "1",
+    "operation": "linear_equation",
+    "skill_label": "subtract"
+  },
+  {
+    "example_id": "iid-89",
+    "split": "iid",
+    "question": "Solve for x: x + (14) = 18",
+    "answer": "4",
+    "operation": "linear_equation",
+    "skill_label": "subtract"
+  },
+  {
+    "example_id": "iid-90",
+    "split": "iid",
+    "question": "Solve for x: x + (3) = -16",
+    "answer": "-19",
+    "operation": "linear_equation",
+    "skill_label": "subtract"
+  },
+  {
+    "example_id": "iid-91",
+    "split": "iid",
+    "question": "Solve for x: 9*x + (3) = 174",
+    "answer": "19",
+    "operation": "two_step_linear_equation",
+    "skill_label": "divide"
+  },
+  {
+    "example_id": "iid-92",
+    "split": "iid",
+    "question": "Solve for x: 9*x + (8) = 53",
+    "answer": "5",
+    "operation": "two_step_linear_equation",
+    "skill_label": "divide"
+  },
+  {
+    "example_id": "iid-93",
+    "split": "iid",
+    "question": "Solve for x: 3*x + (1) = -17",
+    "answer": "-6",
+    "operation": "two_step_linear_equation",
+    "skill_label": "divide"
+  },
+  {
+    "example_id": "iid-94",
+    "split": "iid",
+    "question": "Solve for x: x + (7) = -7",
+    "answer": "-14",
+    "operation": "linear_equation",
+    "skill_label": "subtract"
+  },
+  {
+    "example_id": "iid-95",
+    "split": "iid",
+    "question": "Solve for x: x + (8) = 15",
+    "answer": "7",
+    "operation": "linear_equation",
+    "skill_label": "subtract"
+  },
+  {
+    "example_id": "iid-96",
+    "split": "iid",
+    "question": "Solve for x: 7*x + (-11) = -46",
+    "answer": "-5",
+    "operation": "two_step_linear_equation",
+    "skill_label": "divide"
+  },
+  {
+    "example_id": "iid-97",
+    "split": "iid",
+    "question": "Solve for x: x + (-8) = -11",
+    "answer": "-3",
+    "operation": "linear_equation",
+    "skill_label": "subtract"
+  },
+  {
+    "example_id": "iid-98",
+    "split": "iid",
+    "question": "Solve for x: -6*x + (-9) = -117",
+    "answer": "18",
+    "operation": "two_step_linear_equation",
+    "skill_label": "divide"
+  },
+  {
+    "example_id": "iid-99",
+    "split": "iid",
+    "question": "Solve for x: x + (-14) = -26",
+    "answer": "-12",
+    "operation": "linear_equation",
+    "skill_label": "subtract"
+  },
+  {
+    "example_id": "iid-100",
+    "split": "iid",
+    "question": "Solve for x: 7*x + (-15) = -57",
+    "answer": "-6",
+    "operation": "two_step_linear_equation",
+    "skill_label": "divide"
+  },
+  {
+    "example_id": "iid-101",
+    "split": "iid",
+    "question": "Solve for x: x + (-9) = 5",
+    "answer": "14",
+    "operation": "linear_equation",
+    "skill_label": "subtract"
+  },
+  {
+    "example_id": "iid-102",
+    "split": "iid",
+    "question": "Solve for x: x + (13) = 33",
+    "answer": "20",
+    "operation": "linear_equation",
+    "skill_label": "subtract"
+  },
+  {
+    "example_id": "iid-103",
+    "split": "iid",
+    "question": "Solve for x: -8*x + (4) = 92",
+    "answer": "-11",
+    "operation": "two_step_linear_equation",
+    "skill_label": "divide"
+  },
+  {
+    "example_id": "iid-104",
+    "split": "iid",
+    "question": "Solve for x: 7*x + (-14) = -105",
+    "answer": "-13",
+    "operation": "two_step_linear_equation",
+    "skill_label": "divide"
+  },
+  {
+    "example_id": "iid-105",
+    "split": "iid",
+    "question": "Solve for x: x + (15) = 18",
+    "answer": "3",
+    "operation": "linear_equation",
+    "skill_label": "subtract"
+  },
+  {
+    "example_id": "iid-106",
+    "split": "iid",
+    "question": "Solve for x: x + (-1) = 1",
+    "answer": "2",
+    "operation": "linear_equation",
+    "skill_label": "subtract"
+  },
+  {
+    "example_id": "iid-107",
+    "split": "iid",
+    "question": "Solve for x: 3*x + (-7) = 14",
+    "answer": "7",
+    "operation": "two_step_linear_equation",
+    "skill_label": "divide"
+  },
+  {
+    "example_id": "iid-108",
+    "split": "iid",
+    "question": "Solve for x: -7*x + (-5) = 128",
+    "answer": "-19",
+    "operation": "two_step_linear_equation",
+    "skill_label": "divide"
+  },
+  {
+    "example_id": "iid-109",
+    "split": "iid",
+    "question": "Solve for x: 7*x + (2) = 107",
+    "answer": "15",
+    "operation": "two_step_linear_equation",
+    "skill_label": "divide"
+  },
+  {
+    "example_id": "iid-110",
+    "split": "iid",
+    "question": "Solve for x: 3*x + (11) = 8",
+    "answer": "-1",
+    "operation": "two_step_linear_equation",
+    "skill_label": "divide"
+  },
+  {
+    "example_id": "iid-111",
+    "split": "iid",
+    "question": "Solve for x: x + (1) = -8",
+    "answer": "-9",
+    "operation": "linear_equation",
+    "skill_label": "subtract"
+  },
+  {
+    "example_id": "iid-112",
+    "split": "iid",
+    "question": "Solve for x: 2*x + (-8) = -38",
+    "answer": "-15",
+    "operation": "two_step_linear_equation",
+    "skill_label": "divide"
+  },
+  {
+    "example_id": "iid-113",
+    "split": "iid",
+    "question": "Solve for x: -7*x + (-6) = -62",
+    "answer": "8",
+    "operation": "two_step_linear_equation",
+    "skill_label": "divide"
+  },
+  {
+    "example_id": "iid-114",
+    "split": "iid",
+    "question": "Solve for x: x + (-10) = -6",
+    "answer": "4",
+    "operation": "linear_equation",
+    "skill_label": "subtract"
+  },
+  {
+    "example_id": "iid-115",
+    "split": "iid",
+    "question": "Solve for x: 7*x + (-14) = -21",
+    "answer": "-1",
+    "operation": "two_step_linear_equation",
+    "skill_label": "divide"
+  },
+  {
+    "example_id": "iid-116",
+    "split": "iid",
+    "question": "Solve for x: x + (-2) = 9",
+    "answer": "11",
+    "operation": "linear_equation",
+    "skill_label": "subtract"
+  },
+  {
+    "example_id": "iid-117",
+    "split": "iid",
+    "question": "Solve for x: -2*x + (-1) = 11",
+    "answer": "-6",
+    "operation": "two_step_linear_equation",
+    "skill_label": "divide"
+  },
+  {
+    "example_id": "iid-118",
+    "split": "iid",
+    "question": "Solve for x: 5*x + (13) = 3",
+    "answer": "-2",
+    "operation": "two_step_linear_equation",
+    "skill_label": "divide"
+  },
+  {
+    "example_id": "iid-119",
+    "split": "iid",
+    "question": "Solve for x: x + (-1) = -15",
+    "answer": "-14",
+    "operation": "linear_equation",
+    "skill_label": "subtract"
+  },
+  {
+    "example_id": "iid-120",
+    "split": "iid",
+    "question": "Solve for x: -7*x + (-1) = -120",
+    "answer": "17",
+    "operation": "two_step_linear_equation",
+    "skill_label": "divide"
+  },
+  {
+    "example_id": "iid-121",
+    "split": "iid",
+    "question": "Solve for x: 2*x + (-13) = -19",
+    "answer": "-3",
+    "operation": "two_step_linear_equation",
+    "skill_label": "divide"
+  },
+  {
+    "example_id": "iid-122",
+    "split": "iid",
+    "question": "Solve for x: 5*x + (5) = -70",
+    "answer": "-15",
+    "operation": "two_step_linear_equation",
+    "skill_label": "divide"
+  },
+  {
+    "example_id": "iid-123",
+    "split": "iid",
+    "question": "Solve for x: 3*x + (9) = -18",
+    "answer": "-9",
+    "operation": "two_step_linear_equation",
+    "skill_label": "divide"
+  },
+  {
+    "example_id": "iid-124",
+    "split": "iid",
+    "question": "Solve for x: 5*x + (-11) = -46",
+    "answer": "-7",
+    "operation": "two_step_linear_equation",
+    "skill_label": "divide"
+  },
+  {
+    "example_id": "iid-125",
+    "split": "iid",
+    "question": "Solve for x: x + (6) = 5",
+    "answer": "-1",
+    "operation": "linear_equation",
+    "skill_label": "subtract"
+  },
+  {
+    "example_id": "iid-126",
+    "split": "iid",
+    "question": "Solve for x: x + (10) = 0",
+    "answer": "-10",
+    "operation": "linear_equation",
+    "skill_label": "subtract"
+  },
+  {
+    "example_id": "iid-127",
+    "split": "iid",
+    "question": "Solve for x: x + (8) = -8",
+    "answer": "-16",
+    "operation": "linear_equation",
+    "skill_label": "subtract"
+  },
+  {
+    "example_id": "iid-128",
+    "split": "iid",
+    "question": "Solve for x: 5*x + (-2) = -67",
+    "answer": "-13",
+    "operation": "two_step_linear_equation",
+    "skill_label": "divide"
+  },
+  {
+    "example_id": "iid-129",
+    "split": "iid",
+    "question": "Solve for x: x + (-15) = -16",
+    "answer": "-1",
+    "operation": "linear_equation",
+    "skill_label": "subtract"
+  },
+  {
+    "example_id": "iid-130",
+    "split": "iid",
+    "question": "Solve for x: -7*x + (11) = 144",
+    "answer": "-19",
+    "operation": "two_step_linear_equation",
+    "skill_label": "divide"
+  },
+  {
+    "example_id": "iid-131",
+    "split": "iid",
+    "question": "Solve for x: -7*x + (11) = 88",
+    "answer": "-11",
+    "operation": "two_step_linear_equation",
+    "skill_label": "divide"
+  },
+  {
+    "example_id": "iid-132",
+    "split": "iid",
+    "question": "Solve for x: -4*x + (-11) = 9",
+    "answer": "-5",
+    "operation": "two_step_linear_equation",
+    "skill_label": "divide"
+  },
+  {
+    "example_id": "iid-133",
+    "split": "iid",
+    "question": "Solve for x: x + (-4) = -16",
+    "answer": "-12",
+    "operation": "linear_equation",
+    "skill_label": "subtract"
+  },
+  {
+    "example_id": "iid-134",
+    "split": "iid",
+    "question": "Solve for x: -2*x + (-10) = 28",
+    "answer": "-19",
+    "operation": "two_step_linear_equation",
+    "skill_label": "divide"
+  },
+  {
+    "example_id": "iid-135",
+    "split": "iid",
+    "question": "Solve for x: -7*x + (15) = -76",
+    "answer": "13",
+    "operation": "two_step_linear_equation",
+    "skill_label": "divide"
+  },
+  {
+    "example_id": "iid-136",
+    "split": "iid",
+    "question": "Solve for x: x + (6) = 18",
+    "answer": "12",
+    "operation": "linear_equation",
+    "skill_label": "subtract"
+  },
+  {
+    "example_id": "iid-137",
+    "split": "iid",
+    "question": "Solve for x: 2*x + (15) = 25",
+    "answer": "5",
+    "operation": "two_step_linear_equation",
+    "skill_label": "divide"
+  },
+  {
+    "example_id": "iid-138",
+    "split": "iid",
+    "question": "Solve for x: x + (7) = 5",
+    "answer": "-2",
+    "operation": "linear_equation",
+    "skill_label": "subtract"
+  },
+  {
+    "example_id": "iid-139",
+    "split": "iid",
+    "question": "Solve for x: x + (-14) = -28",
+    "answer": "-14",
+    "operation": "linear_equation",
+    "skill_label": "subtract"
+  },
+  {
+    "example_id": "iid-140",
+    "split": "iid",
+    "question": "Solve for x: 6*x + (-6) = -96",
+    "answer": "-15",
+    "operation": "two_step_linear_equation",
+    "skill_label": "divide"
+  },
+  {
+    "example_id": "iid-141",
+    "split": "iid",
+    "question": "Solve for x: x + (7) = -9",
+    "answer": "-16",
+    "operation": "linear_equation",
+    "skill_label": "subtract"
+  },
+  {
+    "example_id": "iid-142",
+    "split": "iid",
+    "question": "Solve for x: -8*x + (-12) = -164",
+    "answer": "19",
+    "operation": "two_step_linear_equation",
+    "skill_label": "divide"
+  },
+  {
+    "example_id": "iid-143",
+    "split": "iid",
+    "question": "Solve for x: 7*x + (1) = -104",
+    "answer": "-15",
+    "operation": "two_step_linear_equation",
+    "skill_label": "divide"
+  },
+  {
+    "example_id": "iid-144",
+    "split": "iid",
+    "question": "Solve for x: -4*x + (15) = 35",
+    "answer": "-5",
+    "operation": "two_step_linear_equation",
+    "skill_label": "divide"
+  },
+  {
+    "example_id": "iid-145",
+    "split": "iid",
+    "question": "Solve for x: 9*x + (-6) = 39",
+    "answer": "5",
+    "operation": "two_step_linear_equation",
+    "skill_label": "divide"
+  },
+  {
+    "example_id": "iid-146",
+    "split": "iid",
+    "question": "Solve for x: -7*x + (-4) = -53",
+    "answer": "7",
+    "operation": "two_step_linear_equation",
+    "skill_label": "divide"
+  },
+  {
+    "example_id": "iid-147",
+    "split": "iid",
+    "question": "Solve for x: x + (4) = -9",
+    "answer": "-13",
+    "operation": "linear_equation",
+    "skill_label": "subtract"
+  },
+  {
+    "example_id": "iid-148",
+    "split": "iid",
+    "question": "Solve for x: 4*x + (-7) = -83",
+    "answer": "-19",
+    "operation": "two_step_linear_equation",
+    "skill_label": "divide"
+  },
+  {
+    "example_id": "iid-149",
+    "split": "iid",
+    "question": "Solve for x: x + (13) = 24",
+    "answer": "11",
+    "operation": "linear_equation",
+    "skill_label": "subtract"
+  },
+  {
+    "example_id": "iid-150",
+    "split": "iid",
+    "question": "Solve for x: x + (-5) = 10",
+    "answer": "15",
+    "operation": "linear_equation",
+    "skill_label": "subtract"
+  },
+  {
+    "example_id": "iid-151",
+    "split": "iid",
+    "question": "Solve for x: x + (-7) = -24",
+    "answer": "-17",
+    "operation": "linear_equation",
+    "skill_label": "subtract"
+  },
+  {
+    "example_id": "iid-152",
+    "split": "iid",
+    "question": "Solve for x: 5*x + (13) = 43",
+    "answer": "6",
+    "operation": "two_step_linear_equation",
+    "skill_label": "divide"
+  },
+  {
+    "example_id": "iid-153",
+    "split": "iid",
+    "question": "Solve for x: 9*x + (10) = -152",
+    "answer": "-18",
+    "operation": "two_step_linear_equation",
+    "skill_label": "divide"
+  },
+  {
+    "example_id": "iid-154",
+    "split": "iid",
+    "question": "Solve for x: 4*x + (-7) = 73",
+    "answer": "20",
+    "operation": "two_step_linear_equation",
+    "skill_label": "divide"
+  },
+  {
+    "example_id": "iid-155",
+    "split": "iid",
+    "question": "Solve for x: x + (-11) = -9",
+    "answer": "2",
+    "operation": "linear_equation",
+    "skill_label": "subtract"
+  },
+  {
+    "example_id": "iid-156",
+    "split": "iid",
+    "question": "Solve for x: x + (7) = -13",
+    "answer": "-20",
+    "operation": "linear_equation",
+    "skill_label": "subtract"
+  },
+  {
+    "example_id": "iid-157",
+    "split": "iid",
+    "question": "Solve for x: x + (4) = 12",
+    "answer": "8",
+    "operation": "linear_equation",
+    "skill_label": "subtract"
+  },
+  {
+    "example_id": "iid-158",
+    "split": "iid",
+    "question": "Solve for x: 8*x + (4) = -124",
+    "answer": "-16",
+    "operation": "two_step_linear_equation",
+    "skill_label": "divide"
+  },
+  {
+    "example_id": "iid-159",
+    "split": "iid",
+    "question": "Solve for x: x + (9) = -9",
+    "answer": "-18",
+    "operation": "linear_equation",
+    "skill_label": "subtract"
+  }
+]

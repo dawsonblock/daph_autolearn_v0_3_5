@@ -1,0 +1,27 @@
+# Ablation configurations for v0.5.2
+ablations:
+  # Loss component ablations
+  no_functional:
+    functional_weight: 0.0
+    description: "Drop L_functional — expect CSS to collapse"
+  no_disentangle:
+    disentangle_weight: 0.0
+    description: "Drop L_disentangle — expect skill/instance entanglement"
+  no_invariance:
+    invariance_weight: 0.0
+    description: "Drop L_invariance in Phase A — expect skill bank to absorb operand info"
+  # Architecture ablations
+  linear_composition:
+    composition: "linear"
+    description: "Use linear instead of gated composition"
+  # Training ablations
+  no_freeze_anneal:
+    unfreeze_fraction: 0.0
+    description: "No freeze anneal — joint from start (expect entanglement)"
+  single_negatives:
+    functional_negatives: 1
+    description: "K=1 hard negative — minimal contrastive signal"
+  # Router ablations
+  soft_routing:
+    router_topk: 0  # 0 = soft (use all skills)
+    description: "Soft routing — no sparsification"

@@ -1,0 +1,42 @@
+seed: 1337
+model:
+  name: "Qwen/Qwen2.5-0.5B-Instruct"
+  dtype: "bfloat16"
+  trust_remote_code: true
+  device_map: "auto"
+memory:
+  latent_tokens: 8
+  encoder_width: 512
+  encoder_layers: 2
+  dropout: 0.0
+  max_state_tokens: 256
+training:
+  epochs: 3
+  batch_size: 2
+  grad_accum_steps: 8
+  learning_rate: 0.0003
+  weight_decay: 0.01
+  alignment_weight: 0.25
+  answer_weight: 1.0
+  max_prompt_tokens: 384
+  max_answer_tokens: 48
+  teacher_layer_fraction: 0.75
+  gradient_clip: 1.0
+  val_holdout_fraction: 0.15
+  val_seed: 1337
+  selection_metric: "val_loss"
+evaluation:
+  bootstrap_samples: 1000
+  leakage_max_accuracy: 0.75
+  generation_max_new_tokens: 48
+  temperature: 0.0
+  embeds_generate_includes_prefix: false
+  corruption_alphas: [0.00, 0.01, 0.025, 0.05, 0.10, 0.25, 0.50, 1.00, 2.00]
+  null_permutations: 200
+  null_percentile: 99
+  css_floor_pp: 5.0
+  seed_count: 5
+utility:
+  accuracy_weight: 1.0
+  latency_weight: 0.01
+  token_weight: 0.0001

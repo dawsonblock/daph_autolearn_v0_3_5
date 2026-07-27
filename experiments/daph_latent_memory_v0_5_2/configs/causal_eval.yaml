@@ -1,0 +1,37 @@
+# Causal evaluation configuration — used by evaluate_latent_causality.py
+seed: 1337
+conditions:
+  baselines:
+    - base
+    - matched
+    - zero
+    - constant
+    - random_gaussian
+    - random_norm_matched
+  query_binding:
+    - shuffled_global
+    - shuffled_same_class
+    - shuffled_wrong_class
+    - nearest_neighbor_wrong
+    - farthest_neighbor
+  geometry:
+    - normalized
+    - scaled
+    - sign_flipped
+    - mean_latent
+    - centroid_latent
+    - pca_low_rank
+    - pca_residual
+corruption:
+  alphas: [0.00, 0.01, 0.025, 0.05, 0.10, 0.25, 0.50, 1.00, 2.00]
+  per_alpha_seeds: 3
+pca:
+  k_values: [1, 2, 4, 8, 16, 32, 64, 128]
+statistics:
+  mcnemar_alpha: 0.01
+  bootstrap_samples: 1000
+  null_permutations: 200
+  null_percentile: 99
+  css_floor_pp: 5.0
+  gate_robustness_band_pp: 1.0   # |A(0.5) - A(0)| < epsilon
+  gate_large_corruption_delta_pp: 3.0  # A(0) - A(2) > delta
