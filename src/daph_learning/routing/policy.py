@@ -32,23 +32,21 @@ from typing import Any, Callable, Literal, Mapping, Sequence
 
 import numpy as np
 
+from daph_learning.routing.errors import (
+    InvalidRouteDecisionError,
+    ModelRoutingError,
+    MultiTokenRouteError,
+    RouteResolutionError,
+    SteeringApplicationError,
+)
+from daph_learning.telemetry import emit_fallback
+
 RouteTarget = Literal["symbolic", "llm", "abstain"]
 _VALID_ROUTE_TARGETS: frozenset[str] = frozenset({"symbolic", "llm", "abstain"})
 
 
-# --- Typed failures (minimal set for V037-001; expanded in V037-003) ---
-
-
-class RouteResolutionError(Exception):
-    """Base class for failures while resolving a route for a task."""
-
-
-class InvalidRouteDecisionError(RouteResolutionError):
-    """A custom ``route_fn`` returned a result that cannot be coerced to a
-    valid :class:`RouteDecision`.
-
-    This is raised (not swallowed) so caller bugs surface immediately.
-    """
+# --- Typed failures (canonical taxonomy lives in daph_learning.routing.errors;
+# re-exported here for backward compatibility with V037-001 callers) ---
 
 
 @dataclass(frozen=True)
@@ -279,8 +277,16 @@ def steered_router(
                 action, margin = route_action_from_logits(logits, sym_id, llm_id)
                 route = action  # type: ignore[assignment]
                 raw_scores = {"symbolic": float(margin), "llm": 0.0}
-            except Exception:
-                # Multi-token or unresolvable label: fall back to generate mode.
+            except MultiTokenRouteError:
+                # Expected: label tokenizes to >1 token. Fall back to generate
+                # mode with structured telemetry.
+                emit_fallback(
+                    event="route_fallback",
+                    frm="logit",
+                    to="generate",
+                    reason="multi_token_label",
+                    task_id=task_id,
+                )
                 gen_out = model.generate(
                     **encoded,
                     max_new_tokens=5,
@@ -294,9 +300,51 @@ def steered_router(
                 ).strip()
                 action = parse_route_action(generated)
                 route = action if action in _VALID_ROUTE_TARGETS else "llm"  # type: ignore[assignment]
-        except Exception:
-            # Steered routing failed for this task -> conservative default.
-            # V037-003 will replace this bare except with typed fallbacks.
+            except RouteResolutionError as exc:
+                # Expected: context-boundary or other route-resolution issue.
+                emit_fallback(
+                    event="route_fallback",
+                    frm="logit",
+                    to="generate",
+                    reason="context_boundary",
+                    task_id=task_id,
+                    detail=str(exc),
+                )
+                gen_out = model.generate(
+                    **encoded,
+                    max_new_tokens=5,
+                    do_sample=False,
+                    pad_token_id=getattr(tokenizer, "pad_token_id", None),
+                    use_cache=True,
+                )
+                generated = tokenizer.decode(
+                    gen_out[0][encoded["input_ids"].shape[1]:],
+                    skip_special_tokens=True,
+                ).strip()
+                action = parse_route_action(generated)
+                route = action if action in _VALID_ROUTE_TARGETS else "llm"  # type: ignore[assignment]
+        except SteeringApplicationError as exc:
+            # Expected-ish: steering hook failed (layer index, shape mismatch).
+            # Fall back to a conservative LLM default with telemetry.
+            emit_fallback(
+                event="route_fallback",
+                frm="steered",
+                to="llm_default",
+                reason="steering_hook_failure",
+                task_id=task_id,
+                detail=str(exc),
+            )
+            route = "llm"
+        except ModelRoutingError as exc:
+            # Model forward/generate failed unexpectedly. Conservative default.
+            emit_fallback(
+                event="route_fallback",
+                frm="steered",
+                to="llm_default",
+                reason="model_routing_failure",
+                task_id=task_id,
+                detail=str(exc),
+            )
             route = "llm"
 
         decisions.append(

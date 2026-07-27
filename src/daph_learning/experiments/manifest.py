@@ -93,15 +93,18 @@ def _detect_environment() -> dict[str, Any]:
             env["cuda_version"] = torch.version.cuda
             try:
                 env["gpu_model"] = torch.cuda.get_device_name(0)
-            except Exception:
+            except (RuntimeError, IndexError, AttributeError):
+                # CUDA device query failed (no device, driver issue, index
+                # out of range). Best-effort: leave gpu_model as None.
                 env["gpu_model"] = None
-    except Exception:
+    except (ImportError, ModuleNotFoundError):
+        # torch not installed -> best-effort None fields.
         pass
     try:
         import transformers  # type: ignore[import-not-found]
 
         env["transformers_version"] = transformers.__version__
-    except Exception:
+    except (ImportError, ModuleNotFoundError):
         pass
     return env
 
@@ -156,7 +159,8 @@ def _config_hash(model: Any) -> str | None:
     try:
         # to_dict is the HF PretrainedConfig API; sorted for stability.
         cfg_dict = cfg.to_dict()
-    except Exception:
+    except (AttributeError, TypeError, ValueError):
+        # Config object lacks to_dict or returned non-serializable data.
         return None
     return hashlib.sha256(
         json.dumps(cfg_dict, sort_keys=True, default=str).encode("utf-8")
@@ -182,7 +186,8 @@ def _dtype_name(model: Any) -> str | None:
     try:
         dt = next(model.parameters()).dtype
         return str(dt).replace("torch.", "")
-    except Exception:
+    except (AttributeError, StopIteration, TypeError):
+        # Model has no parameters() or parameters() is empty/non-iterable.
         return None
 
 

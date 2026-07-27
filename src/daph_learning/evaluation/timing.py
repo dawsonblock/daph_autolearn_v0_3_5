@@ -35,7 +35,7 @@ def _torch_cuda_available() -> bool:
     try:
         import torch
         return torch.cuda.is_available()
-    except Exception:
+    except (ImportError, ModuleNotFoundError):
         return False
 
 
@@ -125,8 +125,9 @@ def cuda_timed(
             end = torch.cuda.Event(enable_timing=True)
             start.record()
             cuda_ready = True
-        except Exception:
-            # Fall through to CPU path if CUDA event setup fails.
+        except (RuntimeError, AttributeError, IndexError):
+            # Fall through to CPU path if CUDA event setup fails (no device,
+            # driver issue, device index out of range).
             pass
 
     if cuda_ready:

@@ -3,6 +3,11 @@ from __future__ import annotations
 import re
 from typing import Any, Literal, Mapping
 
+from daph_learning.routing.errors import (
+    ContextBoundaryError,
+    MultiTokenRouteError,
+)
+
 RouteAction = Literal["symbolic", "llm"]
 _ACTION_RE = re.compile(r"^\s*(?:ACTION:\s*)?(SYMBOLIC|LLM)\b", re.IGNORECASE)
 # v0.3.6: detect the ACTION anchor and any trailing whitespace so the
@@ -170,7 +175,7 @@ def resolve_route_token_ids(
     if fallback_candidate is not None:
         return fallback_candidate
 
-    raise ValueError(
+    raise MultiTokenRouteError(
         f"could not resolve {symbolic_label!r} and {llm_label!r} to distinct "
         f"single-token representations using leading_space options {options}; attempts: "
         + "; ".join(attempts)
@@ -217,7 +222,7 @@ def resolve_route_token_ids_contextual(
     attempts: list[str] = []
 
     if not rendered_prompt:
-        raise ValueError(
+        raise ContextBoundaryError(
             "contextual resolver requires a non-empty rendered prompt to "
             "derive the continuation token"
         )
@@ -257,7 +262,7 @@ def resolve_route_token_ids_contextual(
     if fallback_candidate is not None:
         return fallback_candidate
 
-    raise ValueError(
+    raise MultiTokenRouteError(
         f"could not resolve {symbolic_label!r} and {llm_label!r} to distinct "
         f"single continuation tokens after the rendered prompt; attempts: "
         + "; ".join(attempts)

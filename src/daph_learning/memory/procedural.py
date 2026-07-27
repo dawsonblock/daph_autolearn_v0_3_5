@@ -67,7 +67,7 @@ class ProceduralMemory:
                 try:
                     data = json.loads(line)
                     memory.upsert(Procedure(**data))
-                except Exception as exc:
+                except (json.JSONDecodeError, TypeError, KeyError, ValueError) as exc:
                     raise ValueError(
                         f"Invalid Procedure JSONL at {path}:{line_no}: {exc}"
                     ) from exc

@@ -16,9 +16,16 @@ from daph_learning.execution.symbolic_executor import (
     execute_plan,
     plan_from_structured_task,
 )
+from daph_learning.routing.errors import (
+    ContextBoundaryError,
+    ModelRoutingError,
+    MultiTokenRouteError,
+    SteeringApplicationError,
+)
 from daph_learning.steering.extract import contrastive_mean_direction
 from daph_learning.steering.hooks import capture_layer_output
 from daph_learning.steering.types import SteeringSpec, SteeringVector
+from daph_learning.tools.symbolic_math import SymbolicMathError
 
 
 # --- Outcome classification ---
@@ -253,7 +260,20 @@ def _capture_activations(
                 if act.ndim == 2:
                     act = act[-1]  # last token
                 activations.append(act.numpy().astype(np.float32))
-        except Exception:
+        except (RuntimeError, ValueError, TypeError, IndexError, SteeringApplicationError) as exc:
+            # Expected activation-capture failures: layer index out of range,
+            # shape/device mismatch, hook application error, type mismatch
+            # from a non-standard tokenizer. The task is skipped (no
+            # activation collected). Unexpected exceptions propagate.
+            from daph_learning.telemetry import emit_fallback
+            emit_fallback(
+                event="activation_capture_failure",
+                frm="capture",
+                to="skip",
+                reason=type(exc).__name__,
+                task_id=str(task.get("task_id", "")),
+                layer=layer,
+            )
             continue
 
     if not activations:
@@ -270,7 +290,19 @@ def _execute_symbolic(task: dict[str, Any]) -> tuple[str | None, bool]:
         plan = plan_from_structured_task(task, reason_code="autolearn")
         result = execute_plan(plan)
         return f"FINAL: {result.value}", result.verified
-    except Exception:
+    except (SymbolicMathError, ValueError, TypeError, KeyError) as exc:
+        # Expected symbolic-execution failures: unsafe expression, unsupported
+        # operation, resource limit, unsupported capability, missing input.
+        # These are normal "symbolic couldn't handle this task" signals, not
+        # infrastructure failures. Unexpected exceptions propagate.
+        from daph_learning.telemetry import emit_fallback
+        emit_fallback(
+            event="symbolic_execution_failure",
+            frm="symbolic",
+            to="none",
+            reason=type(exc).__name__,
+            task_id=str(task.get("task_id", "")),
+        )
         return None, False
 
 
@@ -338,7 +370,19 @@ def _route_with_steering_generate(
             ).strip()
             action = parse_route_action(generated)
             routes.append((action, generated))
-        except Exception:
+        except (RuntimeError, SteeringApplicationError, ValueError, AttributeError) as exc:
+            # Expected generate-mode routing failures: model.generate error,
+            # steering hook failure, decode/shape error, or model lacks a
+            # generate method. The task gets a (None, None) route; unexpected
+            # exceptions propagate.
+            from daph_learning.telemetry import emit_fallback
+            emit_fallback(
+                event="route_fallback",
+                frm="steered_generate",
+                to="none",
+                reason=type(exc).__name__,
+                task_id=str(task.get("task_id", "")),
+            )
             routes.append((None, None))
 
     return routes
@@ -391,7 +435,18 @@ def _route_without_steering_generate(
             ).strip()
             action = parse_route_action(generated)
             routes.append(action)
-        except Exception:
+        except (RuntimeError, ValueError, AttributeError) as exc:
+            # Expected generate-mode routing failures (no steering): model
+            # error, decode error, or model lacks a generate method. The task
+            # gets a None route; unexpected exceptions propagate.
+            from daph_learning.telemetry import emit_fallback
+            emit_fallback(
+                event="route_fallback",
+                frm="generate",
+                to="none",
+                reason=type(exc).__name__,
+                task_id=str(task.get("task_id", "")),
+            )
             routes.append(None)
 
     return routes
@@ -583,16 +638,51 @@ def run_autolearn_loop(
                             token_resolver=resolver,
                             allow_first_token_fallback=True,
                         )
-                        for task, route_record in zip(task_list, steered_routes):
-                            routes[task["task_id"]] = route_record["route"]
+                        for task in task_list:
+                            routes[task["task_id"]] = steered_routes[task["task_id"]]["route"]
                         routed_via_logit = True
                         break
-                    except Exception:
+                    except MultiTokenRouteError as exc:
+                        # Expected: tokenizer produces multi-token route labels.
+                        # Try the next resolver (contextual -> isolated) and
+                        # emit structured telemetry for the fallback.
+                        from daph_learning.telemetry import emit_fallback
+                        emit_fallback(
+                            event="route_fallback",
+                            frm=resolver,
+                            to="isolated" if resolver == "contextual" else "generate",
+                            reason="multi_token_label",
+                            iteration=iteration,
+                            detail=str(exc),
+                        )
+                        continue
+                    except ContextBoundaryError as exc:
+                        # Expected: prompt/label boundary unresolvable.
+                        from daph_learning.telemetry import emit_fallback
+                        emit_fallback(
+                            event="route_fallback",
+                            frm=resolver,
+                            to="isolated" if resolver == "contextual" else "generate",
+                            reason="context_boundary",
+                            iteration=iteration,
+                            detail=str(exc),
+                        )
                         continue
                 if not routed_via_logit:
                     if routing_mode == "logit":
-                        raise
+                        raise ModelRoutingError(
+                            "logit routing mode requested but both contextual and "
+                            "isolated resolvers failed to produce single-token ids"
+                        )
                     # Fall back to generate mode
+                    from daph_learning.telemetry import emit_fallback
+                    emit_fallback(
+                        event="route_fallback",
+                        frm="logit",
+                        to="generate",
+                        reason="all_resolvers_failed",
+                        iteration=iteration,
+                    )
                     use_generate_mode = True
                     steered_route_list = _route_with_steering_generate(
                         task_list, model, tokenizer, current_vector, config.alpha,
@@ -745,10 +835,41 @@ def run_autolearn_loop(
                             val_recall = float(val_metrics["recall"])
                             val_routed_via_logit = True
                             break
-                        except Exception:
+                        except MultiTokenRouteError as exc:
+                            from daph_learning.telemetry import emit_fallback
+                            emit_fallback(
+                                event="route_fallback",
+                                frm=resolver,
+                                to="isolated" if resolver == "contextual" else "generate",
+                                reason="multi_token_label",
+                                iteration=iteration,
+                                phase="validation",
+                                detail=str(exc),
+                            )
+                            continue
+                        except ContextBoundaryError as exc:
+                            from daph_learning.telemetry import emit_fallback
+                            emit_fallback(
+                                event="route_fallback",
+                                frm=resolver,
+                                to="isolated" if resolver == "contextual" else "generate",
+                                reason="context_boundary",
+                                iteration=iteration,
+                                phase="validation",
+                                detail=str(exc),
+                            )
                             continue
                     if not val_routed_via_logit:
                         # Fall back to generate mode for validation too
+                        from daph_learning.telemetry import emit_fallback
+                        emit_fallback(
+                            event="route_fallback",
+                            frm="logit",
+                            to="generate",
+                            reason="all_resolvers_failed",
+                            iteration=iteration,
+                            phase="validation",
+                        )
                         use_generate_mode = True
                         val_route_list = _route_with_steering_generate(
                             val_list, model, tokenizer, current_vector, config.alpha,
