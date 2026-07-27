@@ -42,8 +42,12 @@ import numpy as np
 
 from daph_learning.steering.io import load_vector
 from daph_learning.steering.types import SteeringSpec, SteeringVector
-from scripts.evaluate_routes import evaluate_route_records
-from scripts.tune_steering import _evaluate_batch_steered_routes, _load_llm, _as_task_map, load_jsonl
+from daph_learning.evaluation.routes import evaluate_route_records, load_jsonl
+from daph_learning.routing.batched import (
+    evaluate_batch_steered_routes as _evaluate_batch_steered_routes,
+    as_task_map as _as_task_map,
+)
+from daph_learning.data.task_utils import load_llm as _load_llm
 
 
 def _make_random_direction(

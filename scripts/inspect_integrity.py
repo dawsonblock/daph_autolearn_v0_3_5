@@ -1,12 +1,15 @@
 from __future__ import annotations
 
+import importlib.util
 import inspect
 from pathlib import Path
 
-try:
-    from scripts import generate_v0_outputs as generation
-except ModuleNotFoundError:
-    import generate_v0_outputs as generation
+# Load generate_v0_outputs.py by file path so this diagnostic does not depend
+# on the scripts package being importable. V037-002: avoid `from scripts...`.
+_gen_path = Path(__file__).resolve().parent / "generate_v0_outputs.py"
+_spec = importlib.util.spec_from_file_location("_integrity_gen_v0", _gen_path)
+generation = importlib.util.module_from_spec(_spec)
+_spec.loader.exec_module(generation)
 
 
 def main() -> None:

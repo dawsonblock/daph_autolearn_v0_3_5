@@ -409,7 +409,7 @@ def main() -> None:
     if run_llm:
         if not args.model:
             ap.error("--model is required unless --symbolic-only is set")
-        from scripts.generate_v0_outputs import _load_llm
+        from daph_learning.data.task_utils import load_llm as _load_llm
         model, tokenizer = _load_llm(args.model)
         if tokenizer.pad_token_id is None and tokenizer.eos_token_id is not None:
             tokenizer.pad_token = tokenizer.eos_token

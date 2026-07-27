@@ -32,7 +32,8 @@ from pathlib import Path
 
 from daph_learning.autolearn import AutoLearnConfig, run_autolearn_loop
 from daph_learning.steering.io import save_vector
-from scripts.tune_steering import _load_llm, load_jsonl
+from daph_learning.data.task_utils import load_llm as _load_llm
+from daph_learning.evaluation.routes import load_jsonl
 
 
 def main() -> None:

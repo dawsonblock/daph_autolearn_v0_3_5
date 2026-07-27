@@ -489,8 +489,14 @@ def run_autolearn_loop(
     AutoLearnResult
         The best vector, best iteration, and the full learning curve.
     """
-    from scripts.evaluate_routes import evaluate_route_records
-    from scripts.tune_steering import _evaluate_batch_steered_routes, _as_task_map
+    # V037-002: import reusable routing/evaluation helpers from the library
+    # layer instead of from scripts/. The dependency direction is now
+    # CLI -> package only.
+    from daph_learning.evaluation.routes import evaluate_route_records
+    from daph_learning.routing.batched import (
+        evaluate_batch_steered_routes as _evaluate_batch_steered_routes,
+        as_task_map as _as_task_map,
+    )
 
     if eval_fn is None:
         eval_fn = evaluate_route_records

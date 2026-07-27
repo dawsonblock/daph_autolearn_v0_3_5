@@ -6,115 +6,19 @@ import math
 from pathlib import Path
 from typing import Any, Sequence
 
-from daph_learning.routing.logit_router import score_route_batch_from_logits
-from daph_learning.routing.steered_router import build_route_prompt
+# V037-002: the reusable logic now lives in the library layer.
+# ``scripts/tune_steering.py`` is a thin CLI wrapper around it.
+from daph_learning.routing.batched import (
+    as_task_map as _as_task_map,
+    evaluate_batch_steered_routes as _evaluate_batch_steered_routes,
+    score_key as _score_key,
+    chunks as _chunks,
+)
+from daph_learning.evaluation.routes import evaluate_route_records, load_jsonl as load_jsonl
+from daph_learning.data.task_utils import format_for_model as _format_for_model, load_llm as _load_llm
 from daph_learning.steering.io import load_vector, load_vector_bundle
-from scripts.evaluate_routes import evaluate_route_records, load as load_jsonl
-from scripts.generate_v0_outputs import _format_for_model, _load_llm
-from scripts._manifest import emit_manifest, manifest_reference_line
+from daph_learning.experiments.manifest import emit_manifest, manifest_reference_line
 from daph_learning.evaluation.manifest import ManifestValidationError
-
-
-def _as_task_map(rows: list[dict[str, Any]]) -> dict[str, dict[str, Any]]:
-    ids = [str(row.get("task_id", "")) for row in rows]
-    if any(not tid for tid in ids):
-        raise ValueError("validation tasks must all contain task_id")
-    if len(ids) != len(set(ids)):
-        raise ValueError("validation task IDs must be unique")
-    return {row["task_id"]: row for row in rows}
-
-
-def _score_key(record: dict[str, Any]) -> tuple[float, float, float]:
-    metrics = record["metrics"]
-    return (
-        float(metrics["f1"]),
-        float(metrics["decision_coverage"]),
-        float(metrics["route_accuracy"]),
-    )
-
-
-def _chunks(items: Sequence[Any], batch_size: int):
-    for start in range(0, len(items), batch_size):
-        yield items[start:start + batch_size]
-
-
-def _evaluate_batch_steered_routes(
-    tasks: list[dict[str, Any]],
-    model: Any,
-    tokenizer: Any,
-    vector: Any | None = None,
-    alpha: float | None = None,
-    prompt_format: str = "chat",
-    *,
-    vectors: Sequence[Any] | None = None,
-    alphas: Sequence[float] | None = None,
-    batch_size: int = 32,
-    threshold: float = 0.0,
-    token_resolver: str = "isolated",
-    allow_first_token_fallback: bool = False,
-) -> dict[str, dict[str, Any]]:
-    """Evaluate routes with batched single-forward logit contrast.
-
-    Supports both the historical single-vector call shape and a composite
-    multi-layer bundle.
-
-    ``allow_first_token_fallback`` (v0.3.6) is forwarded to
-    :func:`score_route_batch_from_logits`; when ``True``, multi-token route
-    labels are reduced to their first continuation token so the logit
-    contrast path stays available for tokenizers like Qwen2.5 that never
-    produce a single-token route label.
-    """
-    if batch_size <= 0:
-        raise ValueError("batch_size must be positive")
-    if vector is not None and vectors is not None:
-        raise ValueError("provide either vector or vectors, not both")
-
-    bundle = list(vectors or ([] if vector is None else [vector]))
-    if not bundle:
-        raise ValueError("at least one steering vector is required")
-
-    if alphas is None:
-        if vector is not None and alpha is not None:
-            effective_alphas = [float(alpha)]
-        else:
-            effective_alphas = [float(v.spec.alpha) for v in bundle]
-    else:
-        effective_alphas = [float(a) for a in alphas]
-
-    if len(effective_alphas) != len(bundle):
-        raise ValueError("alphas length must match vector bundle length")
-
-    anchors = {v.spec.anchor or "ACTION:" for v in bundle}
-    if len(anchors) != 1:
-        raise ValueError("all vectors in a composite tool-policy bundle must share one anchor")
-    anchor = next(iter(anchors))
-
-    routes: dict[str, dict[str, Any]] = {}
-    for batch in _chunks(tasks, batch_size):
-        rendered = [
-            _format_for_model(build_route_prompt(task), tokenizer, prompt_format)
-            for task in batch
-        ]
-        scored = score_route_batch_from_logits(
-            rendered,
-            model,
-            tokenizer,
-            vectors=bundle,
-            alphas=effective_alphas,
-            anchor=anchor,
-            threshold=threshold,
-            leading_space=None,
-            token_resolver=token_resolver,
-            allow_first_token_fallback=allow_first_token_fallback,
-        )
-        for task, (action, margin) in zip(batch, scored):
-            routes[task["task_id"]] = {
-                "task_id": task["task_id"],
-                "route": action,
-                "route_margin": margin,
-                "route_method": "batched_logit_contrast",
-            }
-    return routes
 
 
 def _validate_tool_bundle(vectors: Sequence[Any]) -> None:

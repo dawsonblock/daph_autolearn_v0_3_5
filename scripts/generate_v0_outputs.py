@@ -24,7 +24,12 @@ from daph_learning.steering.hooks import (
 )
 from daph_learning.steering.io import load_vector, load_vector_bundle
 from daph_learning.tools.symbolic_math import SymbolicMathError
-from scripts._manifest import emit_manifest, manifest_reference_line
+# V037-002: reusable helpers now live in the library layer.
+from daph_learning.data.task_utils import (
+    format_for_model as _format_for_model,
+    load_llm as _load_llm,
+)
+from daph_learning.experiments.manifest import emit_manifest, manifest_reference_line
 from daph_learning.evaluation.manifest import ManifestValidationError
 
 
@@ -70,34 +75,6 @@ def _load_tasks(path: Path) -> list[dict[str, Any]]:
             seen.add(tid)
             tasks.append(task)
     return tasks
-
-
-def _load_llm(model_id: str):
-    import torch
-    from transformers import AutoModelForCausalLM, AutoTokenizer
-
-    tokenizer = AutoTokenizer.from_pretrained(model_id)
-    dtype = torch.bfloat16 if torch.cuda.is_available() else torch.float32
-    model = AutoModelForCausalLM.from_pretrained(
-        model_id,
-        torch_dtype=dtype,
-        device_map="auto" if torch.cuda.is_available() else None,
-    )
-    model.eval()
-    return model, tokenizer
-
-
-def _format_for_model(prompt: str, tokenizer, prompt_format: str) -> str:
-    if prompt_format == "raw":
-        return prompt
-    if not hasattr(tokenizer, "apply_chat_template") or tokenizer.chat_template is None:
-        raise ValueError("--prompt-format chat requested but tokenizer has no chat template")
-    messages = [{"role": "user", "content": prompt}]
-    return tokenizer.apply_chat_template(
-        messages,
-        tokenize=False,
-        add_generation_prompt=True,
-    )
 
 
 def _chunks(items: Sequence[Any], batch_size: int):
