@@ -171,11 +171,11 @@ behind a flag. It is a separate research program.
 
 ---
 
-## 6. "348 passing tests"
+## 6. "364 passing tests"
 
 **Status: ESTABLISHED as engineering regression — PARTIAL scientific qualification.**
 
-v0.3.7 reports 348 passed, 1 skipped (was 320 + 4 pre-existing failures in
+v0.3.7 reports 364 passed, 1 skipped (was 320 + 4 pre-existing failures in
 v0.3.6; the v0.3.6 failures were caused by `src/` importing from `scripts/`,
 which V037-002 fixed). The v0.3.7 additions:
 
@@ -183,6 +183,7 @@ which V037-002 fixed). The v0.3.7 additions:
 - 3 src→scripts dependency-direction tests (V037-002)
 - 17 typed-error + telemetry tests (V037-003)
 - 8 version + claims discipline tests (V037-004)
+- 16 environment provenance + fail-closed manifest tests (V037-005)
 
 v0.3.5 added 14 real-model integration tests
 (`tests/test_real_model_integration.py`) using `sshleifer/tiny-gpt2`. These
@@ -208,7 +209,7 @@ This partially closes the real-model gap from the audit §24. However:
 
 The full qualification gate (Qwen2.5-3B-Instruct + chat template + anchor
 mapping + multi-layer hooks + left-padded batching + direct logits + KV
-cache + model.generate()) remains a P0 item. Until then, "348 passing
+cache + model.generate()) remains a P0 item. Until then, "364 passing
 tests" must be quoted with the qualification "unit, regression, and
 toy-model integration tests; full-scale real-model qualification pending."
 

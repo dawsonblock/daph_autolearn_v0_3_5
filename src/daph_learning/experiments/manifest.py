@@ -76,37 +76,16 @@ def _detect_git(repo_root: Path) -> GitInfo:
 
 
 def _detect_environment() -> dict[str, Any]:
-    """Best-effort environment detection. Never raises."""
-    env: dict[str, Any] = {
-        "python_version": platform.python_version(),
-        "os": f"{platform.system().lower()} {platform.release()}",
-        "torch_version": None,
-        "transformers_version": None,
-        "cuda_version": None,
-        "gpu_model": None,
-    }
-    try:
-        import torch  # type: ignore[import-not-found]
+    """Best-effort environment detection. Never raises.
 
-        env["torch_version"] = torch.__version__
-        if torch.cuda.is_available():
-            env["cuda_version"] = torch.version.cuda
-            try:
-                env["gpu_model"] = torch.cuda.get_device_name(0)
-            except (RuntimeError, IndexError, AttributeError):
-                # CUDA device query failed (no device, driver issue, index
-                # out of range). Best-effort: leave gpu_model as None.
-                env["gpu_model"] = None
-    except (ImportError, ModuleNotFoundError):
-        # torch not installed -> best-effort None fields.
-        pass
-    try:
-        import transformers  # type: ignore[import-not-found]
-
-        env["transformers_version"] = transformers.__version__
-    except (ImportError, ModuleNotFoundError):
-        pass
-    return env
+    V037-005: delegates to :func:`daph_learning.environment.capture_environment`
+    which uses ``importlib.metadata.version`` for installed-package versions
+    (the installed version, not the imported version — they can differ in
+    editable installs) and captures the full provenance set (accelerate,
+    peft, safetensors, CUDA driver, GPU compute capability, etc.).
+    """
+    from daph_learning.environment import capture_environment
+    return capture_environment(fail_closed=False)
 
 
 def _detect_model_info(model_id: str | None) -> dict[str, Any]:
@@ -367,6 +346,7 @@ def emit_manifest(
     validate_headline: bool = False,
     loaded_model: Any | None = None,
     loaded_tokenizer: Any | None = None,
+    fail_closed_environment: bool = False,
 ) -> tuple[str, RunManifest]:
     """Build, validate, and write a run manifest next to ``output_path``.
 
@@ -385,6 +365,16 @@ def emit_manifest(
     left as None. This makes a run manifest headline-eligible without
     the caller having to fill those fields manually.
 
+    V037-005: when ``fail_closed_environment`` is True, environment
+    provenance capture uses
+    :func:`daph_learning.environment.capture_environment` with
+    ``fail_closed=True``, which raises
+    :class:`daph_learning.environment.EnvironmentProvenanceError` if any
+    REQUIRED_FOR_HEADLINE_ENV field cannot be captured. This is the
+    fail-closed behavior for headline manifests. When ``loaded_model`` is
+    supplied, attention implementation / dtype / device map are also
+    captured from it.
+
     Validation failures raise
     :class:`daph_learning.evaluation.manifest.ManifestValidationError`.
     Scripts should catch this, print a warning naming the missing fields,
@@ -394,7 +384,14 @@ def emit_manifest(
     headline-eligible run.
     """
     git = _detect_git(repo_root)
-    env = _detect_environment()
+    # V037-005: use the structured environment collector. When
+    # fail_closed_environment is True, missing required fields raise
+    # EnvironmentProvenanceError instead of silently producing None.
+    from daph_learning.environment import capture_environment
+    env = capture_environment(
+        model=loaded_model,
+        fail_closed=fail_closed_environment,
+    )
     if additional_environment:
         env.update(dict(additional_environment))
 

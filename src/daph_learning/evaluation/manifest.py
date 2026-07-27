@@ -52,6 +52,12 @@ REQUIRED_FOR_HEADLINE_VECTOR = (
 )
 REQUIRED_FOR_HEADLINE_MODEL = ("revision", "config_hash", "dtype")
 REQUIRED_FOR_HEADLINE_TOKENIZER = ("revision", "chat_template_hash")
+# V037-005: expanded environment provenance requirements. A headline
+# manifest must record the installed versions of the packages that affect
+# reproducibility, plus the CUDA/GPU info if CUDA is available. The
+# accelerate/peft/safetensors fields are REQUIRED_FOR_HEADLINE only when
+# the package is installed (the validator checks non-None when present in
+# the environment dict); torch and transformers are always required.
 REQUIRED_FOR_HEADLINE_ENV = ("torch_version", "transformers_version")
 
 LEGAL_PROMPT_FORMATS = frozenset({"raw", "chat"})

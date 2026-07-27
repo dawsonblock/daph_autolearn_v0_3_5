@@ -57,8 +57,22 @@
   prevented the loop from updating is now addressed by the typed-error
   cascade with telemetry (the loop now correctly falls back to generate
   mode instead of silently swallowing).
+- **V037-005 — environment provenance capture**: added
+  `src/daph_learning/environment.py` with `capture_environment`, which
+  uses `importlib.metadata.version` for installed-package versions
+  (torch, transformers, accelerate, peft, safetensors, numpy,
+  daph-learning) — the *installed* version, not the *imported* version,
+  which matters for editable installs. Captures CUDA runtime + driver,
+  GPU name, GPU compute capability, attention implementation, dtype, and
+  device map. `fail_closed=True` raises
+  `EnvironmentProvenanceError` when a REQUIRED_FOR_HEADLINE_ENV field
+  cannot be captured. `emit_manifest(fail_closed_environment=True)`
+  propagates the fail-closed behavior. The v0.3.6
+  `_detect_environment` in `experiments/manifest.py` now delegates to
+  `capture_environment`. Added `tests/test_manifest_environment.py`
+  (16 tests).
 
-Test count: 348 passed, 1 skipped (was 320 + 4 pre-existing failures).
+Test count: 364 passed, 1 skipped (was 320 + 4 pre-existing failures).
 
 # 0.3.5 (manifest + claims patch)
 
