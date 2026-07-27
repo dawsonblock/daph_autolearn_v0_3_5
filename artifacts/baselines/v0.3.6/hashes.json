@@ -1,0 +1,86 @@
+{
+  ".v034_verify/ood_a.jsonl": {
+    "sha256": "f6f9735fd890dba08adf5f47679361f932b00ee937c53ee229d08a008ad629ac",
+    "size": 144525
+  },
+  ".v034_verify/ood_b.jsonl": {
+    "sha256": "f6f9735fd890dba08adf5f47679361f932b00ee937c53ee229d08a008ad629ac",
+    "size": 144525
+  },
+  ".v035_verify/base.jsonl": {
+    "sha256": "49c7b8e2b83a00bd0c3ba1ee6ee8f5af38735c070c64ea9288ed6dacfb0f63bb",
+    "size": 333
+  },
+  ".v035_verify/tasks.jsonl": {
+    "sha256": "a1d9fbae47b384b50a1e512aa32c0b263406a3267f3c49e76aae44a594cb7eac",
+    "size": 333
+  },
+  ".v035_verify/treat.jsonl": {
+    "sha256": "6d1d8862d4615e450f39a124061633728378f5ef7da9195327a0673904b15d3b",
+    "size": 333
+  },
+  "CHANGELOG.md": {
+    "sha256": "25b97af92d777054d49f50123e1c88f344639a5df76dce1c3b3507942d239399",
+    "size": 16662
+  },
+  "CLAIMS.md": {
+    "sha256": "35b5b49771ecf759c04f954d616ced2f20de19bd0e3329772e6b9d808331f7f8",
+    "size": 19901
+  },
+  "README.md": {
+    "sha256": "bea79a62de0bafd04164b835d361ce8137e13611c9493a30976fff0e96066185",
+    "size": 26222
+  },
+  "ROADMAP.md": {
+    "sha256": "4e5274bc048b34b9e2241e3e016aef79a0f16754ebc6c516c87c6c1a9b74f518",
+    "size": 29827
+  },
+  "data/ood_demo.jsonl": {
+    "sha256": "24d383aaf6108ecff57882f5b58de72c20fbee5167e1be09a67135a5e6b9dc26",
+    "size": 1069
+  },
+  "data/v0_memory/.gitkeep": {
+    "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "size": 0
+  },
+  "data/v0_outputs/.gitkeep": {
+    "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "size": 0
+  },
+  "data/v0_splits/README.md": {
+    "sha256": "2baa51a09a02f22288c3757b4b2eb737ee95eec0ec4ba67a63b7fee63763ce2b",
+    "size": 253
+  },
+  "experiments/data/test.jsonl": {
+    "sha256": "e9c9e8419ceef205090ece27a0fec9aca02b62af10fdf7c97c7a32b711ffbf60",
+    "size": 18638
+  },
+  "experiments/data/train.jsonl": {
+    "sha256": "03052f786cac3342ceefece90d832b83406c2a065a7be21fc4929c432d148be5",
+    "size": 37074
+  },
+  "experiments/data/val.jsonl": {
+    "sha256": "f93fcf631aa146daedd16a2fc3211e0bd50d292cbcafeda084a908e269fd05d7",
+    "size": 18543
+  },
+  "experiments/results/full_experiment.json": {
+    "sha256": "621be133c60d8cce772a06d8c4d32a0ccadffaac3a9055fbe79d86080f25dfc4",
+    "size": 3290
+  },
+  "experiments/results/negative_activations.npy": {
+    "sha256": "d962bb466eb8e4e8dcd70e5fd06f33c9b01ef3e5f23b702b7976e61da1d9e6ba",
+    "size": 510080
+  },
+  "experiments/results/positive_activations.npy": {
+    "sha256": "3bd7e5fc01c3972146f53c909d9b560535155ecefa4f63cc14a2a52de0a208ea",
+    "size": 104576
+  },
+  "experiments/run_full_experiment.py": {
+    "sha256": "3bd1fc89cc53e08ea318381eb4342093e24af19f0b82fe7f59bbde266390cc30",
+    "size": 25115
+  },
+  "pyproject.toml": {
+    "sha256": "fed93be8e8f14118013db304b9c22c075cab4bd123295832d3c80fa5ee5bb947",
+    "size": 767
+  }
+}

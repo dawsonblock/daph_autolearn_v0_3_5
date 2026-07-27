@@ -1,0 +1,11 @@
+{
+  "alpha": 3.0,
+  "anchor": "ACTION:",
+  "layer": 20,
+  "model": "Qwen/Qwen2.5-1.5B-Instruct",
+  "n_test": 50,
+  "n_train": 100,
+  "n_val": 50,
+  "normalization": "none",
+  "prompt_format": "chat"
+}
