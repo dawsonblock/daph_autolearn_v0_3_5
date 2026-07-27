@@ -53,7 +53,7 @@ def split_train_validation(data, holdout_fraction, seed):
 
 @torch.no_grad()
 def evaluate_validation(encoder, constant, injector, model, tokenizer, val_data,
-                        device, mem, tcfg):
+                        device, tcfg):
     """Compute held-out validation answer loss for the process-latent path.
 
     The selection criterion is the mean LM answer loss on the held-out validation
@@ -241,7 +241,7 @@ def main():
         epoch_constant = sum(running_constant) / max(1, len(running_constant))
         epoch_val = evaluate_validation(
             encoder, constant, injector, model, tokenizer, val_data,
-            device, mem, {**tcfg, "val_seed": val_seed},
+            device, {**tcfg, "val_seed": val_seed},
         )
 
         if selection_metric == "val_loss" and epoch_val is not None:

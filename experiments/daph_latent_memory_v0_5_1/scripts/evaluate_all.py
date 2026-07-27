@@ -28,7 +28,8 @@ def _decode_tokens(tokenizer, token_ids: torch.Tensor) -> tuple[list[str], list[
     if token_ids.ndim != 2:
         raise ValueError("Expected [batch, sequence] generated token IDs")
     texts = tokenizer.batch_decode(token_ids, skip_special_tokens=True)
-    counts = [int(row.numel()) for row in token_ids]
+    pad_id = tokenizer.pad_token_id
+    counts = [int((row != pad_id).sum().item()) for row in token_ids]
     return texts, counts
 
 
@@ -151,7 +152,7 @@ def main():
     ).to(device)
     constant = ConstantLatent(mem["latent_tokens"], hidden).to(device)
 
-    ckpt = torch.load(args.checkpoint, map_location="cpu")
+    ckpt = torch.load(args.checkpoint, map_location="cpu", weights_only=False)
     encoder.load_state_dict(ckpt["encoder"])
     if ckpt.get("constant") is None:
         raise ValueError("Checkpoint lacks trained constant-latent baseline; retrain with v0.5.1")
