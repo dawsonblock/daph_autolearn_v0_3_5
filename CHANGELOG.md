@@ -81,7 +81,7 @@
   the commands are on PATH and `PYTHONPATH=src:.` is no longer
   required. Added `tests/test_cli_entrypoints.py` (13 tests).
 
-Test count: 377 passed, 1 skipped (was 320 + 4 pre-existing failures).
+Test count: 392 passed, 1 skipped (was 320 + 4 pre-existing failures).
 
 # 0.3.5 (manifest + claims patch)
 

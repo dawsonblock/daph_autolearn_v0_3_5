@@ -51,6 +51,7 @@ src/daph_learning/tools/symbolic_math.py
 tests/test_activation_telemetry.py
 tests/test_alpha_grid.py
 tests/test_autolearn_loop.py
+tests/test_cli_entrypoints.py
 tests/test_contextual_token_resolver.py
 tests/test_cuda_timing.py
 tests/test_empirical_oracles.py
