@@ -1,4 +1,16 @@
-# DAPH AutoLearn Roadmap — v0.3.7 → v0.4.0
+# DAPH AutoLearn Roadmap — v0.3.8 → v0.4.0
+
+> **v0.3.8 status**: AutoLearn v2 core is implemented and tested (560+ passing
+> tests). The counterfactual execution, reward-gap updater, acceptance gate,
+> immutable lineage, checkpointing, leakage detection, and statistics
+> modules are complete. The engine orchestrates the full workflow
+> end-to-end with reproducibility guarantees.
+>
+> **What remains for v0.4.0**: real-model validation (running v2 with actual
+> transformer activations on the OOD benchmark), multi-vector policy
+> evaluation, and the full baseline comparison suite. The v2 core is
+> structurally complete; the remaining work is empirical validation, not
+> architecture.
 
 This file is the canonical, ticket-tracked plan for taking DAPH AutoLearn from a
 steering-vector research harness to a counterfactual, utility-driven,

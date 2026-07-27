@@ -1,4 +1,4 @@
-# DAPH AutoLearn v0.3.7
+# DAPH AutoLearn v0.3.8
 
 **A falsifiable research harness for LLM tool-routing via residual activation steering.**
 
@@ -15,6 +15,12 @@ symbolic engine or by an LLM. Activation steering vectors — extracted from the
 model's own residual stream — can bias that routing decision at inference time
 without fine-tuning. An iterative learning loop refines the steering vector from
 execution outcomes (correct vs. misrouted), giving the project its name.
+
+> **v0.3.8 adds AutoLearn v2** — an empirical, counterfactual, utility-driven
+> policy-learning system that replaces the contrastive-vector loop with
+> reward-gap-based incremental updates, acceptance gating, immutable policy
+> lineage, leakage detection, and reproducible checkpoints. See
+> [AutoLearn v2](#autolearn-v2) below.
 
 > **Status disclaimer:** This is a research scaffold, not a production system.
 > See [`CLAIMS.md`](CLAIMS.md) for the precise set of licensed claims. The term
@@ -35,6 +41,7 @@ execution outcomes (correct vs. misrouted), giving the project its name.
   - [Steering Vector Extraction](#steering-vector-extraction)
   - [Steering Tuning](#steering-tuning)
   - [AutoLearn Loop](#autolearn-loop)
+  - [AutoLearn v2](#autolearn-v2)
   - [Composite Multi-Layer Steering](#composite-multi-layer-steering)
   - [OOD Benchmark Generation](#ood-benchmark-generation)
   - [Evaluation](#evaluation)
@@ -300,6 +307,71 @@ python scripts/autolearn.py \
 
 The loop prints a learning curve (iteration, train accuracy, val F1, val accuracy, updated flag, vector norm) and saves the best vector by validation F1.
 
+### AutoLearn v2
+
+AutoLearn v2 is an empirical, counterfactual, utility-driven policy-learning
+system that replaces the v0.3.x contrastive-vector loop. The full workflow:
+
+```text
+task → capture representation
+     → execute candidate backends counterfactually (during learning)
+     → verify outputs (typed: exact integer, normalized string, symbolic)
+     → measure reward/utility per backend
+     → derive optimal action / reward gap
+     → store experience → sample replay / hard examples
+     → produce candidate policy update (incremental, trust-region)
+     → evaluate candidate + active on immutable validation set
+     → accept or reject (domain regression, route collapse, displacement checks)
+     → version + retain + rollback (immutable policy lineage)
+     → checkpoint (atomic) → JSONL telemetry
+```
+
+Key differences from v0.3.x:
+
+- **Counterfactual execution**: both backends run on every training task;
+  the reward gap drives learning, not a contrastive mean direction.
+- **Typed verification**: the numeric substring bug (`expected=12`,
+  `output="312"` → CORRECT) is fixed. Verification is typed: exact
+  integer, normalized string, symbolic result, or explicitly
+  unverifiable. UNVERIFIABLE never earns correctness credit.
+- **Acceptance gate**: candidates must improve utility without
+  regressing any domain, collapsing routes, or exceeding displacement
+  limits. Rejected candidates are retained for lineage.
+- **Immutable policy lineage**: accepted policies are write-once;
+  rollback restores any prior accepted policy.
+- **Leakage detection**: semantic-family-aware splitting ensures no
+  generator family or template appears in more than one split.
+- **Reproducibility**: deterministic experience IDs, rounded latency,
+  and atomic checkpoints guarantee same-seed reproducibility.
+- **Empirical statistics**: bootstrap CIs and empirical p-values replace
+  the v0.3.x "five random samples → z-score" approach.
+
+Run via CLI:
+
+```bash
+daph-autolearn-v2 \
+  --dataset data/example_dataset.jsonl \
+  --output-dir runs/v2_run_001 \
+  --model-id gpt2 \
+  --layer 6 \
+  --max-iterations 20
+```
+
+Or with a real model for activation capture:
+
+```bash
+daph-autolearn-v2 \
+  --dataset data/my_dataset.jsonl \
+  --output-dir runs/v2_real \
+  --model-id gpt2 \
+  --model-name gpt2 \
+  --tokenizer-name gpt2 \
+  --layer 6 \
+  --max-iterations 20
+```
+
+Example config: [`configs/autolearn_v2_example.json`](configs/autolearn_v2_example.json)
+
 ### Composite Multi-Layer Steering
 
 A multi-layer steering bundle can be passed directly:
@@ -490,10 +562,14 @@ pytest --cov=src/daph_learning --cov-report=term-missing
 
 The test suite covers:
 - Symbolic execution and bounded AST security
-- Routing (deterministic, steered, direct-logit)
+- Routing (deterministic, steered, direct-logit, route normalization)
 - Steering hooks (single/multi-layer, anchor alignment, token scope)
 - Activation telemetry and latency measurement
 - AutoLearn loop (outcome classification, vector updates, early stopping)
+- AutoLearn v2 (counterfactual execution, typed verification, reward engine,
+  replay buffer, trust-region updater, acceptance gate, policy registry,
+  checkpointing, observability, leakage detection, statistics, invariants,
+  full engine integration)
 - Run manifest schema validation and emission
 - OOD benchmark determinism and category coverage
 - Linear-probe baseline and random-direction control
@@ -551,6 +627,22 @@ Run manifests (`daph.run.v1`) record full provenance: model revision, tokenizer 
 ---
 
 ## Changelog
+
+### v0.3.8
+
+- **AutoLearn v2 core**: empirical, counterfactual, utility-driven policy
+  learning system. New `autolearn_v2/` package with experience model,
+  counterfactual execution, reward engine, replay buffer, trust-region
+  updater, acceptance gate, immutable policy lineage, checkpointing,
+  observability, and full engine orchestration.
+- **Phase 1 bug fixes**: route normalization (`("symbolic", raw_text)`
+  tuples now unpacked); typed verification (numeric substring bug fixed:
+  `expected=12`, `output="312"` is now INCORRECT, not CORRECT).
+- **Evaluation framework**: leakage detection (semantic-family-aware
+  splitting), statistics (bootstrap CIs, empirical p-values, McNemar
+  test), baselines (always-LLM, always-symbolic, heuristic, oracle).
+- **CLI**: `daph-autolearn-v2` entry point.
+- **Tests**: 560+ passing tests (170 new v2 tests).
 
 ### v0.3.7
 

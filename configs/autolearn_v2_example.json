@@ -1,0 +1,51 @@
+{
+  "seed": 42,
+  "max_iterations": 20,
+  "model_id": "gpt2",
+  "tokenizer_hash": "unknown",
+  "dataset_id": "example_dataset",
+  "layer": 6,
+  "hidden_size": 768,
+  "alpha": 1.0,
+  "threshold": 0.0,
+  "execution": {
+    "execution_mode": "counterfactual_training",
+    "include_unsupported_symbolic": true
+  },
+  "reward": {
+    "correctness_weight": 1.0,
+    "failure_penalty": 1.0,
+    "latency_weight": 0.05,
+    "cost_weight": 0.02,
+    "uncertainty_weight": 0.05,
+    "abstain_margin": 0.05,
+    "latency_ref_ms": 1000.0,
+    "cost_ref": 1.0
+  },
+  "replay": {
+    "capacity": 500,
+    "batch_size": 32,
+    "seed": 42,
+    "hard_example_fraction": 0.3,
+    "regression_anchor_fraction": 0.1
+  },
+  "update": {
+    "learning_rate": 0.5,
+    "trust_region_radius": 2.0,
+    "max_vector_norm": 10.0,
+    "lambda_reg": 0.0
+  },
+  "acceptance": {
+    "minimum_utility_gain": 0.01,
+    "minimum_samples": 50,
+    "maximum_accuracy_regression": 0.02,
+    "maximum_domain_regression": 0.05,
+    "max_abstain_increase": 0.2,
+    "max_displacement": 5.0,
+    "route_collapse_threshold": 0.95
+  },
+  "checkpoint_path": "runs/v2_run_001/checkpoint.json",
+  "telemetry_path": "runs/v2_run_001/telemetry.jsonl",
+  "registry_dir": "runs/v2_run_001/registry",
+  "domain_key": "domain"
+}

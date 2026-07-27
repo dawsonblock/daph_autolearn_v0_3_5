@@ -1,4 +1,4 @@
-# DAPH AutoLearn v0.3.7 — Licensed Claims
+# DAPH AutoLearn v0.3.8 — Licensed Claims
 
 This file pins down what each term used in this repository is *currently licensed
 to assert* about the system. It exists because the most damaging failure mode
@@ -171,13 +171,12 @@ behind a flag. It is a separate research program.
 
 ---
 
-## 6. "392 passing tests"
+## 6. "560 passing tests"
 
 **Status: ESTABLISHED as engineering regression — PARTIAL scientific qualification.**
 
-v0.3.7 reports 392 passed, 1 skipped (was 320 + 4 pre-existing failures in
-v0.3.6; the v0.3.6 failures were caused by `src/` importing from `scripts/`,
-which V037-002 fixed). The v0.3.7 additions:
+v0.3.8 reports 560+ passed, 1 skipped (was 392 in v0.3.7). The v0.3.8
+additions (AutoLearn v2 core):
 
 - 8 `route_fn` contract tests (V037-001)
 - 3 src→scripts dependency-direction tests (V037-002)

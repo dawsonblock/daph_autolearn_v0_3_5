@@ -1,3 +1,45 @@
+# 0.3.8 (AutoLearn v2 core)
+
+- **AutoLearn v2 — empirical counterfactual policy learning**: replaced the
+  contrastive-vector loop with a reward-gap-driven incremental update system.
+  New modules under `src/daph_learning/autolearn_v2/`:
+    - `experience.py` — `BackendOutcome`, `Experience` dataclasses with
+      deterministic fingerprints and experience IDs
+    - `counterfactual.py` — counterfactual execution collector (both backends
+      run on every training task)
+    - `reward.py` — `UtilityConfig`, `backend_reward`, `reward_gap`,
+      `optimal_action` (explicit, configurable, independently-testable)
+    - `replay.py` — bounded replay buffer with priority, dedup, balancing
+    - `policies/` — `SingleVectorPolicy` (trust-region incremental),
+      `MultiVectorPolicy`, `ConditionalSteeringPolicy`
+    - `updater.py` — reward-gap objective + trust-region candidate update
+    - `acceptance.py` — acceptance gate (utility gain, domain regression,
+      route collapse, displacement, abstain spike checks)
+    - `registry.py` — immutable policy lineage with rollback
+    - `checkpoint.py` — atomic checkpoint save/restore
+    - `observability.py` — JSONL iteration telemetry
+    - `engine.py` — orchestrates the full v2 loop
+    - `invariants.py` — scientific invariant assertions
+- **Phase 1 bug fixes**:
+    - `routing/normalizer.py` — `normalize_route_result` fixes the
+      generate-mode route normalization bug (`("symbolic", raw_text)` tuples
+      were not unpacked)
+    - `verification/` package — typed `VerificationStatus` + verifiers;
+      fixes the numeric substring correctness bug (`expected=12`,
+      `output="312"` was CORRECT; now INCORRECT)
+- **Evaluation framework**:
+    - `evaluation/leakage.py` — semantic-family-aware splitting + leak
+      detection (exact, normalized, family, template, fingerprint overlap)
+    - `evaluation/statistics.py` — bootstrap CIs, empirical p-values,
+      McNemar test, Cohen's d, random-direction null
+    - `evaluation/baselines.py` — baseline framework (always LLM,
+      always symbolic, heuristic router, oracle router, gap closure)
+- **CLI**: `daph-autolearn-v2` entry point + `scripts/autolearn_v2.py`
+- **Example**: `configs/autolearn_v2_example.json`, `data/example_dataset.jsonl`
+- **Tests**: 560+ passing tests (170 new v2 tests covering all modules +
+  full engine integration with reproducibility, restart, acceptance gate,
+  and definition-of-done workflow checks)
+
 # 0.3.7 (route_fn + dependency direction + typed errors)
 
 - **V037-001 — route_fn dead path**: `run_autolearn_loop` accepted a

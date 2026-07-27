@@ -46,7 +46,7 @@ def test_v037_test_file_exists(test_file):
 def test_package_importable_without_pythonpath():
     """If this test runs, the package is installed (pip install -e .)."""
     import daph_learning
-    assert daph_learning.__version__ == "0.3.7"
+    assert daph_learning.__version__ == "0.3.8"
 
 
 def test_cli_entry_points_on_path():
