@@ -23,7 +23,11 @@ import numpy as np
 import torch
 from transformers import AutoModelForCausalLM, AutoTokenizer
 
-from daph_learning.routing.steered_router import build_route_prompt, parse_route_action
+from daph_learning.routing.steered_router import (
+    build_route_prompt,
+    parse_route_action,
+    resolve_route_token_ids,
+)
 from daph_learning.steering.anchors import find_anchor_token_index
 from daph_learning.steering.hooks import capture_layer_output, resolve_transformer_layers
 from daph_learning.steering.extract import contrastive_mean_direction
@@ -315,7 +319,7 @@ def main():
     print(f"  Lift over baseline: {probe_metrics['lift_over_baseline']:.4f}")
 
     # --- Steering-optimized direction ---
-    print("\n[6.5/8] Optimizing steering direction (gradient-free)...")
+    print("\n[6.5/8] Optimizing steering direction (gradient-free, balanced v0.3.6)...")
     t0 = time.time()
     from daph_learning.steering.optimize import optimize_steering_direction
 
@@ -327,8 +331,20 @@ def main():
         rendered = format_prompt(prompt, tokenizer)
         sym_prompts.append(rendered)
 
-    SYM_TOKEN = 18416  # SY (first token of SYMBOLIC)
-    LLM_TOKEN = 4086   # LL (first token of LLM)
+    # v0.3.6 Phase 1.2: also build negative-control prompts (non-symbolic
+    # tasks that must keep routing to LLM). Without these the optimizer
+    # inflated the vector norm until every prompt routed to SYMBOLIC
+    # (FP=42, TN=0, F1=0.2759). See the v0.3.6 repair plan.
+    neg_train_tasks = [t for t in train_tasks if t.get("route_label") == "llm"]
+    neg_prompts = []
+    for task in neg_train_tasks[:10]:
+        prompt = build_route_prompt(task)
+        rendered = format_prompt(prompt, tokenizer)
+        neg_prompts.append(rendered)
+
+    SYM_TOKEN, LLM_TOKEN = resolve_route_token_ids(
+        tokenizer, allow_first_token_fallback=True,
+    )
 
     optimized_direction, opt_info = optimize_steering_direction(
         model, tokenizer, sym_prompts,
@@ -338,11 +354,20 @@ def main():
         n_iterations=5, seed=42, verbose=True,
         method="coordinate",
         n_coordinates=100,
+        negative_prompts=neg_prompts or None,
+        lambda_neg=1.5,
+        gamma=1.0,
+        beta=0.01,
     )
     print(f"  Done in {time.time()-t0:.1f}s")
     print(f"  Initial margin: {opt_info['initial_margin']:.4f}")
     print(f"  Final margin: {opt_info['final_margin']:.4f}")
     print(f"  Improvement: {opt_info['margin_improvement']:.4f}")
+    if opt_info.get("n_negative_prompts"):
+        print(f"  Negative controls: {opt_info['n_negative_prompts']}")
+        print(f"  Initial FPR: {opt_info['initial_false_positive_rate']:.4f}")
+        print(f"  Final FPR:   {opt_info['final_false_positive_rate']:.4f}")
+        print(f"  Objective: {opt_info['initial_objective']:.4f} -> {opt_info['final_objective']:.4f}")
 
     # Create a SteeringVector from the optimized direction
     opt_spec = SteeringSpec(
@@ -354,20 +379,21 @@ def main():
         anchor=ANCHOR,
         model_id=MODEL_ID,
         hidden_size=model.config.hidden_size,
-        extraction_method="gradient_free_optimization",
+        extraction_method="gradient_free_balanced_optimization",
         normalization="none",
         positive_n=len(sym_prompts),
-        negative_n=0,
+        negative_n=len(neg_prompts),
     )
     optimized_vector = SteeringVector(spec=opt_spec, values=optimized_direction)
 
     # Evaluate optimized direction on test set
     print("  Evaluating optimized direction on test set...")
-    t0 = time.time()
-    opt_routes = route_with_steering(test_tasks, model, tokenizer, optimized_vector, ALPHA)
-    opt_labels = [r[0] if r[0] else "llm" for r in opt_routes]
-    optimized_metrics = evaluate_routing(test_tasks, opt_labels, expected_labels)
-    print(f"  Done in {time.time()-t0:.1f}s")
+    from daph_learning.evaluation.timing import cuda_timed
+    with cuda_timed() as timing:
+        opt_routes = route_with_steering(test_tasks, model, tokenizer, optimized_vector, ALPHA)
+        opt_labels = [r[0] if r[0] else "llm" for r in opt_routes]
+        optimized_metrics = evaluate_routing(test_tasks, opt_labels, expected_labels)
+    print(f"  Done in {timing.elapsed_ms/1000:.1f}s ({timing.device}, cuda_events={timing.cuda_event_timing})")
     print(f"  Accuracy: {optimized_metrics['accuracy']:.4f}, F1: {optimized_metrics['f1']:.4f}")
     print(f"  Confusion: {optimized_metrics['confusion_matrix']}")
 

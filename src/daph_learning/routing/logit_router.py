@@ -5,6 +5,7 @@ from typing import Any, Literal, Sequence
 
 from daph_learning.routing.steered_router import (
     RouteAction,
+    detect_route_prompt_alignment,
     resolve_route_token_ids,
     resolve_route_token_ids_contextual,
     route_action_from_logits,
@@ -73,6 +74,7 @@ def score_route_batch_from_logits(
     token_resolver: TokenResolver = "isolated",
     device: Any | None = None,
     telemetry_sink: list | None = None,
+    allow_first_token_fallback: bool = False,
 ) -> list[tuple[RouteAction, float]]:
     """Score route decisions in one forward pass per batch.
 
@@ -93,6 +95,14 @@ def score_route_batch_from_logits(
       Slightly slower (one extra tokenization per label) and requires
       that all prompts in the batch share the same continuation token
       (which is true when they share the same routing-prompt template).
+
+    ``allow_first_token_fallback`` (v0.3.6): when ``True``, multi-token
+    route labels (e.g. Qwen2.5's ``"SYMBOLIC"`` → ``[" SY", "MBOL", "IC"]``)
+    are reduced to their first continuation token, enabling a first-token
+    logit contrast instead of forcing a fall-through to autoregressive
+    generation. This is the default routing path for the AutoLearn loop on
+    multi-token tokenizers; see CLAIMS.md §9 and the v0.3.6 repair plan
+    Phase 1.1.
     """
     import torch
 
@@ -112,15 +122,27 @@ def score_route_batch_from_logits(
     if token_resolver == "contextual":
         if not rendered_prompts:
             raise ValueError("contextual resolver requires at least one rendered prompt")
+        # v0.3.6 Phase 2.2: align the prompt terminal boundary so the
+        # contextual resolver sees a canonical "ACTION:" + " LABEL" form.
+        # When the caller did not force a leading_space hint, derive it
+        # from the rendered prompt's terminal whitespace.
+        aligned_prompt = rendered_prompts[0]
+        effective_leading_space = leading_space
+        if leading_space is None:
+            aligned_prompt, effective_leading_space = detect_route_prompt_alignment(
+                rendered_prompts[0]
+            )
         sym_id, llm_id = resolve_route_token_ids_contextual(
             tokenizer,
-            rendered_prompts[0],
-            leading_space=leading_space,
+            aligned_prompt,
+            leading_space=effective_leading_space,
+            allow_first_token_fallback=allow_first_token_fallback,
         )
     elif token_resolver == "isolated":
         sym_id, llm_id = resolve_route_token_ids(
             tokenizer,
             leading_space=leading_space,
+            allow_first_token_fallback=allow_first_token_fallback,
         )
     else:
         raise ValueError(

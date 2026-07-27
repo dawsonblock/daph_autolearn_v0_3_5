@@ -51,11 +51,18 @@ def _evaluate_batch_steered_routes(
     batch_size: int = 32,
     threshold: float = 0.0,
     token_resolver: str = "isolated",
+    allow_first_token_fallback: bool = False,
 ) -> dict[str, dict[str, Any]]:
     """Evaluate routes with batched single-forward logit contrast.
 
     Supports both the historical single-vector call shape and a composite
     multi-layer bundle.
+
+    ``allow_first_token_fallback`` (v0.3.6) is forwarded to
+    :func:`score_route_batch_from_logits`; when ``True``, multi-token route
+    labels are reduced to their first continuation token so the logit
+    contrast path stays available for tokenizers like Qwen2.5 that never
+    produce a single-token route label.
     """
     if batch_size <= 0:
         raise ValueError("batch_size must be positive")
@@ -98,6 +105,7 @@ def _evaluate_batch_steered_routes(
             threshold=threshold,
             leading_space=None,
             token_resolver=token_resolver,
+            allow_first_token_fallback=allow_first_token_fallback,
         )
         for task, (action, margin) in zip(batch, scored):
             routes[task["task_id"]] = {
@@ -172,8 +180,13 @@ def main() -> None:
     ap.add_argument(
         "--route-token-resolver",
         choices=["isolated", "contextual"],
-        default="isolated",
+        default="contextual",
         help="See generate_v0_outputs.py --route-token-resolver.",
+    )
+    ap.add_argument(
+        "--allow-first-token-fallback",
+        action="store_true",
+        help="See generate_v0_outputs.py --allow-first-token-fallback.",
     )
     ap.add_argument("--logit-threshold", type=float, default=0.0)
     ap.add_argument("--output", required=True)
@@ -338,6 +351,7 @@ def main() -> None:
                 batch_size=args.batch_size,
                 threshold=args.logit_threshold,
                 token_resolver=args.route_token_resolver,
+                allow_first_token_fallback=args.allow_first_token_fallback,
             )
             metrics = evaluate_route_records(
                 task_map,
@@ -438,6 +452,8 @@ def main() -> None:
                 tool_vectors=all_vectors,
                 tool_vector_paths=all_paths,
                 tool_alphas=[None] * len(all_vectors),
+                loaded_model=model,
+                loaded_tokenizer=tokenizer,
             )
             print(manifest_reference_line(sha, Path(str(out_path) + ".manifest.json")))
         except ManifestValidationError as exc:

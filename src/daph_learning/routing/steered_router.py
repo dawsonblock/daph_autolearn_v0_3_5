@@ -5,6 +5,10 @@ from typing import Any, Literal, Mapping
 
 RouteAction = Literal["symbolic", "llm"]
 _ACTION_RE = re.compile(r"^\s*(?:ACTION:\s*)?(SYMBOLIC|LLM)\b", re.IGNORECASE)
+# v0.3.6: detect the ACTION anchor and any trailing whitespace so the
+# contextual resolver can pick the correct leading_space hint without
+# relying on the caller to pass it.
+_ACTION_TERMINAL_RE = re.compile(r"ACTION:(?P<trailing>\s*)$")
 
 
 def build_route_prompt(task: Mapping[str, Any]) -> str:
@@ -27,6 +31,44 @@ def parse_route_action(text: str) -> RouteAction | None:
     if not match:
         return None
     return "symbolic" if match.group(1).upper() == "SYMBOLIC" else "llm"
+
+
+def detect_route_prompt_alignment(rendered_prompt: str) -> tuple[str, bool]:
+    """v0.3.6 Phase 2.2: normalize the routing-prompt terminal boundary.
+
+    Returns ``(aligned_prompt, leading_space)`` where:
+
+    - ``aligned_prompt`` is the rendered prompt with its trailing
+      whitespace after the ``ACTION:`` anchor trimmed to a canonical
+      form (no trailing space). The label is then appended with a
+      single leading space, which is the most portable boundary across
+      BPE / Llama-BPE / SentencePiece tokenizers.
+    - ``leading_space`` is always ``True``: the function normalizes the
+      prompt so the label should always be appended with a leading
+      space (e.g. ``" SYMBOLIC"``). This eliminates the ambiguity where
+      ``"ACTION: " + "SYMBOLIC"`` can re-merge with the space depending
+      on the tokenizer's BPE rules.
+
+    Prompts that do not end with the ``ACTION:`` anchor are returned
+    unchanged with ``leading_space=True`` (the conservative default that
+    matches the historical routing-prompt template).
+    """
+    if not rendered_prompt:
+        return rendered_prompt, True
+    match = _ACTION_TERMINAL_RE.search(rendered_prompt)
+    if not match:
+        return rendered_prompt, True
+    trailing = match.group("trailing")
+    if trailing:
+        # Trim the trailing whitespace so the boundary is the canonical
+        # "ACTION:" + " LABEL" form. This eliminates the ambiguity where
+        # "ACTION: " + "SYMBOLIC" can re-merge with the space depending
+        # on the tokenizer's BPE rules.
+        aligned = rendered_prompt[: match.start("trailing")] + rendered_prompt[match.end("trailing"):]
+        return aligned, True
+    # No trailing space: prompt already ends with "ACTION:". The label
+    # should be appended with a leading space.
+    return rendered_prompt, True
 
 
 def route_action_from_logits(
@@ -67,6 +109,7 @@ def resolve_route_token_ids(
     symbolic_label: str = "SYMBOLIC",
     llm_label: str = "LLM",
     leading_space: bool | None = None,
+    allow_first_token_fallback: bool = False,
 ) -> tuple[int, int]:
     """Resolve route labels to distinct single next-token IDs.
 
@@ -85,10 +128,20 @@ def resolve_route_token_ids(
         For headline-eligible results, use
         :func:`resolve_route_token_ids_contextual` instead, which derives
         the continuation token from the actual rendered prompt.
+
+    When ``allow_first_token_fallback`` is ``True`` (v0.3.6), a label that
+    tokenizes to multiple sub-words (e.g. Qwen2.5's ``"SYMBOLIC"`` →
+    ``["SYM", "BOL", "IC"]``) is reduced to its **first continuation token**.
+    This licenses a first-token logit contrast (``logit[" SY"] -
+    logit[" LL"]``) which is a valid routing signal even when the full label
+    is not a single token. The fallback is opt-in so the strict default
+    behaviour (raise on multi-token) is preserved for callers that require
+    the full-label guarantee.
     """
     options = [leading_space] if leading_space is not None else [True, False]
     attempts: list[str] = []
 
+    fallback_candidate: tuple[int, int] | None = None
     for try_space in options:
         prefix = " " if try_space else ""
         sym_ids = tokenizer.encode(prefix + symbolic_label, add_special_tokens=False)
@@ -96,11 +149,26 @@ def resolve_route_token_ids(
         attempts.append(
             f"{prefix + symbolic_label!r}->{sym_ids}, {prefix + llm_label!r}->{llm_ids}"
         )
-        if len(sym_ids) != 1 or len(llm_ids) != 1:
+        if len(sym_ids) == 1 and len(llm_ids) == 1:
+            sym_id, llm_id = int(sym_ids[0]), int(llm_ids[0])
+            if sym_id != llm_id:
+                return sym_id, llm_id
             continue
-        sym_id, llm_id = int(sym_ids[0]), int(llm_ids[0])
-        if sym_id != llm_id:
-            return sym_id, llm_id
+        # Record a first-token fallback candidate if both labels produce at
+        # least one token and their first tokens differ. We keep iterating
+        # in case a later leading_space option yields a clean single-token
+        # resolution, which is always preferred over the fallback.
+        if (
+            allow_first_token_fallback
+            and fallback_candidate is None
+            and sym_ids
+            and llm_ids
+            and int(sym_ids[0]) != int(llm_ids[0])
+        ):
+            fallback_candidate = (int(sym_ids[0]), int(llm_ids[0]))
+
+    if fallback_candidate is not None:
+        return fallback_candidate
 
     raise ValueError(
         f"could not resolve {symbolic_label!r} and {llm_label!r} to distinct "
@@ -116,6 +184,7 @@ def resolve_route_token_ids_contextual(
     symbolic_label: str = "SYMBOLIC",
     llm_label: str = "LLM",
     leading_space: bool | None = None,
+    allow_first_token_fallback: bool = False,
 ) -> tuple[int, int]:
     """Resolve route labels to single next-token IDs **in context**.
 
@@ -135,6 +204,14 @@ def resolve_route_token_ids_contextual(
     Returns ``(symbolic_token_id, llm_token_id)``. Raises ``ValueError``
     if either label does not produce exactly one continuation token, or if
     the two labels resolve to the same token id.
+
+    When ``allow_first_token_fallback`` is ``True`` (v0.3.6), a multi-token
+    continuation tail (e.g. Qwen2.5's ``" SYMBOLIC"`` → tail ``[" SY",
+    "MBOL", "IC"]``) is reduced to its **first continuation token**. This
+    enables a first-token logit contrast for tokenizers that never produce
+    a single-token route label, which is the common case for instruct-tuned
+    BPE models. The fallback is opt-in: the strict default (raise on
+    multi-token) is preserved so existing callers and tests are unaffected.
     """
     options = [leading_space] if leading_space is not None else [True, False]
     attempts: list[str] = []
@@ -148,6 +225,7 @@ def resolve_route_token_ids_contextual(
     base_ids = tokenizer.encode(rendered_prompt, add_special_tokens=True)
     base_len = len(base_ids)
 
+    fallback_candidate: tuple[int, int] | None = None
     for try_space in options:
         prefix = " " if try_space else ""
         sym_full = rendered_prompt + prefix + symbolic_label
@@ -160,11 +238,24 @@ def resolve_route_token_ids_contextual(
             f"{prefix + symbolic_label!r}: tail={sym_tail}, "
             f"{prefix + llm_label!r}: tail={llm_tail}"
         )
-        if len(sym_tail) != 1 or len(llm_tail) != 1:
+        if len(sym_tail) == 1 and len(llm_tail) == 1:
+            sym_id, llm_id = int(sym_tail[0]), int(llm_tail[0])
+            if sym_id != llm_id:
+                return sym_id, llm_id
             continue
-        sym_id, llm_id = int(sym_tail[0]), int(llm_tail[0])
-        if sym_id != llm_id:
-            return sym_id, llm_id
+        # Record a first-token fallback candidate. A clean single-token
+        # resolution from a later leading_space option is always preferred.
+        if (
+            allow_first_token_fallback
+            and fallback_candidate is None
+            and sym_tail
+            and llm_tail
+            and int(sym_tail[0]) != int(llm_tail[0])
+        ):
+            fallback_candidate = (int(sym_tail[0]), int(llm_tail[0]))
+
+    if fallback_candidate is not None:
+        return fallback_candidate
 
     raise ValueError(
         f"could not resolve {symbolic_label!r} and {llm_label!r} to distinct "

@@ -342,3 +342,370 @@ def test_contextual_resolver_requires_prompts():
     tok = _SingleTokenTokenizer()
     with pytest.raises(ValueError, match="non-empty rendered prompt"):
         resolve_route_token_ids_contextual(tok, "")
+
+
+# --- v0.3.6 Phase 1.1: first-token fallback for multi-token labels ---
+
+class _MultiTokenTokenizer:
+    """A tokenizer where every route label tokenizes to multiple sub-words.
+
+    This mirrors Qwen2.5's behaviour: ``" SYMBOLIC"`` → ``[10, 11, 12]`` and
+    ``" LLM"`` → ``[20, 21]``. Neither the isolated nor the contextual
+    resolver can find a single-token representation, so the strict path
+    raises. The v0.3.6 first-token fallback reduces each label to its
+    leading sub-word (10 vs 20) so a first-token logit contrast is still
+    possible.
+    """
+
+    def __init__(self):
+        self.pad_token_id = 0
+        self.pad_token = "<pad>"
+        self.padding_side = "left"
+
+    def encode(self, text, add_special_tokens=False):
+        if text == " SYMBOLIC":
+            return [10, 11, 12]
+        if text == " LLM":
+            return [20, 21]
+        if text == "SYMBOLIC":
+            return [10, 11, 12]
+        if text == "LLM":
+            return [20, 21]
+        if text == "ACTION:":
+            return [1, 2, 3]
+        if text == "ACTION: SYMBOLIC":
+            return [1, 2, 3, 10, 11, 12]
+        if text == "ACTION: LLM":
+            return [1, 2, 3, 20, 21]
+        return [1, 2, 3]
+
+    def __call__(self, text, **kwargs):
+        import torch
+        if isinstance(text, list):
+            encoded = [self.encode(t, add_special_tokens=True) for t in text]
+            max_len = max(len(e) for e in encoded)
+            padded = [[0] * (max_len - len(e)) + e for e in encoded]
+            return {
+                "input_ids": torch.tensor(padded),
+                "attention_mask": torch.ones(len(padded), max_len, dtype=torch.long),
+            }
+        ids = self.encode(text, add_special_tokens=True)
+        return {"input_ids": ids, "attention_mask": [1] * len(ids)}
+
+
+def test_isolated_resolver_first_token_fallback_returns_first_subword():
+    """allow_first_token_fallback reduces multi-token labels to their first
+    sub-word instead of raising."""
+    tok = _MultiTokenTokenizer()
+    # Strict path raises (no single-token representation exists).
+    with pytest.raises(ValueError, match="could not resolve"):
+        resolve_route_token_ids(tok)
+    # Fallback path returns the first sub-word of each label.
+    sym_id, llm_id = resolve_route_token_ids(tok, allow_first_token_fallback=True)
+    assert sym_id == 10
+    assert llm_id == 20
+
+
+def test_contextual_resolver_first_token_fallback_returns_first_continuation():
+    """The contextual resolver's first-token fallback returns the first
+    continuation token after the rendered prompt."""
+    tok = _MultiTokenTokenizer()
+    with pytest.raises(ValueError, match="could not resolve"):
+        resolve_route_token_ids_contextual(tok, "ACTION:")
+    sym_id, llm_id = resolve_route_token_ids_contextual(
+        tok, "ACTION:", allow_first_token_fallback=True
+    )
+    # T("ACTION: SYMBOLIC") = [1,2,3,10,11,12], base=[1,2,3], tail=[10,11,12]
+    # first continuation token = 10. Same for LLM → 20.
+    assert sym_id == 10
+    assert llm_id == 20
+
+
+def test_first_token_fallback_prefers_single_token_when_available():
+    """When one leading_space option yields a clean single-token resolution,
+    the fallback is NOT used even if allow_first_token_fallback=True."""
+    tok = _ContextAwareTokenizer("ACTION:")
+    # _ContextAwareTokenizer: " SYMBOLIC" → [10] (single), "SYMBOLIC" → [10,99] (multi)
+    # With leading_space=None, the " SYMBOLIC" option resolves cleanly to 10,
+    # so the fallback must never be triggered.
+    sym_id, llm_id = resolve_route_token_ids_contextual(
+        tok, "ACTION:", allow_first_token_fallback=True
+    )
+    assert sym_id == 10
+    assert llm_id == 20
+
+
+def test_first_token_fallback_rejects_same_first_token():
+    """If both labels share the same first sub-word, the fallback cannot
+    produce a distinct contrast and must still raise."""
+    class SameFirstTok:
+        def __init__(self):
+            self.pad_token_id = 0
+            self.pad_token = "<pad>"
+            self.padding_side = "left"
+        def encode(self, text, add_special_tokens=False):
+            if text in (" SYMBOLIC", " LLM", "SYMBOLIC", "LLM"):
+                # Both labels start with the same sub-word 50.
+                return [50, 60] if "SYM" in text else [50, 70]
+            if text == "ACTION:":
+                return [1, 2, 3]
+            if text == "ACTION: SYMBOLIC":
+                return [1, 2, 3, 50, 60]
+            if text == "ACTION: LLM":
+                return [1, 2, 3, 50, 70]
+            return [1, 2, 3]
+        def __call__(self, *a, **k):
+            pass
+    tok = SameFirstTok()
+    with pytest.raises(ValueError, match="could not resolve"):
+        resolve_route_token_ids_contextual(
+            tok, "ACTION:", allow_first_token_fallback=True
+        )
+
+
+def test_score_route_batch_first_token_fallback_routes_on_first_subword():
+    """score_route_batch_from_logits with allow_first_token_fallback=True
+    must read the first-subword logits when full labels are multi-token."""
+    torch = pytest.importorskip("torch")
+    import torch.nn as nn
+
+    tok = _MultiTokenTokenizer()
+
+    class FakeModel(nn.Module):
+        def __init__(self):
+            super().__init__()
+            self.embed = nn.Embedding(100, 4)
+            self.config = type("C", (), {"hidden_size": 4})()
+        def get_input_embeddings(self):
+            return self.embed
+        def forward(self, input_ids, **kwargs):
+            logits = torch.full(
+                (input_ids.shape[0], input_ids.shape[1], 100), -10.0
+            )
+            # First sub-word of SYMBOLIC (10) has high logit; LLM (20) low.
+            logits[:, -1, 10] = 5.0
+            logits[:, -1, 20] = 1.0
+            return type("O", (), {"logits": logits})()
+
+    model = FakeModel()
+    # Strict path raises because labels are multi-token.
+    with pytest.raises(ValueError):
+        score_route_batch_from_logits(
+            ["ACTION:"], model, tok, token_resolver="contextual"
+        )
+    # Fallback path routes SYMBOLIC by reading the first-subword logit.
+    results = score_route_batch_from_logits(
+        ["ACTION:"],
+        model,
+        tok,
+        token_resolver="contextual",
+        allow_first_token_fallback=True,
+    )
+    assert results[0][0] == "symbolic"
+    assert results[0][1] > 0
+
+
+# --- v0.3.6 Phase 2.2: prompt terminal alignment + cross-family validation ---
+
+from daph_learning.routing.steered_router import detect_route_prompt_alignment
+
+
+def test_detect_alignment_trims_trailing_whitespace():
+    """A prompt ending with 'ACTION: ' (trailing space) is trimmed to
+    'ACTION:' and leading_space=True is returned (label appended as
+    ' SYMBOLIC')."""
+    aligned, leading_space = detect_route_prompt_alignment("blah\nACTION: ")
+    assert aligned.endswith("ACTION:")
+    assert not aligned.endswith("ACTION: ")
+    assert leading_space is True
+
+
+def test_detect_alignment_keeps_canonical_action_colon():
+    """A prompt ending with 'ACTION:' (no trailing space) is unchanged
+    and leading_space=True."""
+    aligned, leading_space = detect_route_prompt_alignment("blah\nACTION:")
+    assert aligned == "blah\nACTION:"
+    assert leading_space is True
+
+
+def test_detect_alignment_no_action_anchor_returns_unchanged():
+    """A prompt without the ACTION: anchor is returned unchanged with the
+    conservative leading_space=True default."""
+    aligned, leading_space = detect_route_prompt_alignment("just a prompt")
+    assert aligned == "just a prompt"
+    assert leading_space is True
+
+
+def test_detect_alignment_empty_prompt():
+    aligned, leading_space = detect_route_prompt_alignment("")
+    assert aligned == ""
+    assert leading_space is True
+
+
+def test_contextual_resolver_uses_alignment_when_no_leading_space_hint():
+    """When the caller passes leading_space=None, score_route_batch uses
+    detect_route_prompt_alignment to normalize a trailing-space prompt
+    before resolving continuation tokens. This is the Phase 2.2
+    integration: it eliminates the boundary ambiguity for tokenizers
+    where 'ACTION: ' + 'SYMBOLIC' re-merges differently than
+    'ACTION:' + ' SYMBOLIC'."""
+    torch = pytest.importorskip("torch")
+    import torch.nn as nn
+
+    # A tokenizer where the boundary matters: 'ACTION: SYMBOLIC' (with
+    # the space inside the prompt) tokenizes to a different continuation
+    # than 'ACTION:' + ' SYMBOLIC'.
+    class BoundarySensitiveTok:
+        def __init__(self):
+            self.pad_token_id = 0
+            self.pad_token = "<pad>"
+            self.padding_side = "left"
+        def encode(self, text, add_special_tokens=False):
+            # Canonical aligned form: 'ACTION:' + ' SYMBOLIC' -> [1,2,3,10]
+            if text == "ACTION:":
+                return [1, 2, 3]
+            if text == "ACTION: SYMBOLIC":
+                return [1, 2, 3, 10]   # aligned form: clean continuation 10
+            if text == "ACTION: LLM":
+                return [1, 2, 3, 20]
+            # Trailing-space form (pre-alignment): the space+label would
+            # re-merge into a different token id 77.
+            if text == "ACTION:  SYMBOLIC":
+                return [1, 2, 3, 77]
+            return [1, 2, 3]
+        def __call__(self, text, **kwargs):
+            import torch
+            if isinstance(text, list):
+                encoded = [self.encode(t, add_special_tokens=True) for t in text]
+                max_len = max(len(e) for e in encoded)
+                padded = [[0] * (max_len - len(e)) + e for e in encoded]
+                return {
+                    "input_ids": torch.tensor(padded),
+                    "attention_mask": torch.ones(len(padded), max_len, dtype=torch.long),
+                }
+            ids = self.encode(text, add_special_tokens=True)
+            return {"input_ids": ids, "attention_mask": [1] * len(ids)}
+
+    tok = BoundarySensitiveTok()
+
+    class FakeModel(nn.Module):
+        def __init__(self):
+            super().__init__()
+            self.embed = nn.Embedding(100, 4)
+            self.config = type("C", (), {"hidden_size": 4})()
+        def get_input_embeddings(self):
+            return self.embed
+        def forward(self, input_ids, **kwargs):
+            logits = torch.full((input_ids.shape[0], input_ids.shape[1], 100), -10.0)
+            logits[:, -1, 10] = 5.0   # aligned SYMBOLIC continuation
+            logits[:, -1, 20] = 1.0
+            logits[:, -1, 77] = -5.0  # the pre-alignment wrong token
+            return type("O", (), {"logits": logits})()
+
+    model = FakeModel()
+    # Pass a trailing-space prompt with leading_space=None. The alignment
+    # helper must trim it to 'ACTION:' so the resolver reads token 10
+    # (logit 5) instead of 77 (logit -5).
+    results = score_route_batch_from_logits(
+        ["ACTION: "], model, tok, token_resolver="contextual",
+    )
+    assert results[0][0] == "symbolic"
+    assert results[0][1] > 0
+
+
+# --- Cross-tokenizer-family validation (Phase 2.2 requirement) ---
+# Fake tokenizers representing the three families the plan calls out:
+#   * BPE (Qwen2.5 / GPT-2): multi-token route labels, boundary-sensitive
+#   * Llama-BPE (Llama-3): single-token with leading space
+#   * SentencePiece (Mistral): single-token, no leading space variant
+
+class _BpeFamilyTok:
+    """Qwen2.5-style: 'SYMBOLIC' → [' SY','MBOL','IC'] (multi-token)."""
+    def __init__(self):
+        self.pad_token_id = 0
+        self.pad_token = "<pad>"
+        self.padding_side = "left"
+    def encode(self, text, add_special_tokens=False):
+        if text in (" SYMBOLIC", "SYMBOLIC"):
+            return [10, 11, 12]
+        if text in (" LLM", "LLM"):
+            return [20, 21]
+        if text == "ACTION:":
+            return [1, 2, 3]
+        if text == "ACTION: SYMBOLIC":
+            return [1, 2, 3, 10, 11, 12]
+        if text == "ACTION: LLM":
+            return [1, 2, 3, 20, 21]
+        return [1, 2, 3]
+    def __call__(self, text, **kwargs):
+        ids = self.encode(text, add_special_tokens=True)
+        return {"input_ids": ids, "attention_mask": [1] * len(ids)}
+
+
+class _LlamaBpeFamilyTok:
+    """Llama-3-style: ' SYMBOLIC' → [10] (single token with leading space)."""
+    def __init__(self):
+        self.pad_token_id = 0
+        self.pad_token = "<pad>"
+        self.padding_side = "left"
+    def encode(self, text, add_special_tokens=False):
+        if text == " SYMBOLIC":
+            return [10]
+        if text == " LLM":
+            return [20]
+        if text in ("SYMBOLIC", "LLM"):
+            return [10] if "SYM" in text else [20]   # also single-token without space
+        if text == "ACTION:":
+            return [1, 2, 3]
+        if text == "ACTION: SYMBOLIC":
+            return [1, 2, 3, 10]
+        if text == "ACTION: LLM":
+            return [1, 2, 3, 20]
+        return [1, 2, 3]
+    def __call__(self, text, **kwargs):
+        ids = self.encode(text, add_special_tokens=True)
+        return {"input_ids": ids, "attention_mask": [1] * len(ids)}
+
+
+class _SentencePieceFamilyTok:
+    """Mistral-style: 'SYMBOLIC' → [10] (single token, no leading space)."""
+    def __init__(self):
+        self.pad_token_id = 0
+        self.pad_token = "<pad>"
+        self.padding_side = "left"
+    def encode(self, text, add_special_tokens=False):
+        if text in (" SYMBOLIC", "SYMBOLIC"):
+            return [10]
+        if text in (" LLM", "LLM"):
+            return [20]
+        if text == "ACTION:":
+            return [1, 2, 3]
+        if text == "ACTION: SYMBOLIC":
+            return [1, 2, 3, 10]
+        if text == "ACTION: LLM":
+            return [1, 2, 3, 20]
+        return [1, 2, 3]
+    def __call__(self, text, **kwargs):
+        ids = self.encode(text, add_special_tokens=True)
+        return {"input_ids": ids, "attention_mask": [1] * len(ids)}
+
+
+@pytest.mark.parametrize("tok,allow_fallback,expected_sym,expected_llm", [
+    (_BpeFamilyTok(), True, 10, 20),          # multi-token → first-token fallback
+    (_LlamaBpeFamilyTok(), False, 10, 20),    # single-token, no fallback needed
+    (_SentencePieceFamilyTok(), False, 10, 20),  # single-token, no fallback needed
+])
+def test_contextual_resolver_across_tokenizer_families(
+    tok, allow_fallback, expected_sym, expected_llm
+):
+    """Phase 2.2 requirement: the contextual resolver must produce a
+    distinct (sym, llm) pair across BPE (Qwen/GPT-2), Llama-BPE, and
+    SentencePiece families. The BPE family requires the first-token
+    fallback; the others resolve cleanly."""
+    from daph_learning.routing.steered_router import resolve_route_token_ids_contextual
+    sym_id, llm_id = resolve_route_token_ids_contextual(
+        tok, "ACTION:", allow_first_token_fallback=allow_fallback,
+    )
+    assert sym_id == expected_sym
+    assert llm_id == expected_llm
+    assert sym_id != llm_id

@@ -111,7 +111,8 @@ def _detect_model_info(model_id: str | None) -> dict[str, Any]:
     Revision / config_hash / dtype are not detectable without loading the
     model, which is too expensive to do twice. They are left as None so
     headline validation flags them; callers that want headline-eligible
-    manifests should populate them explicitly.
+    manifests should populate them explicitly via
+    :func:`enrich_model_info_from_loaded_model`.
 
     When ``model_id`` is None (e.g. a symbolic-only run), ``repo`` is set
     to the sentinel ``"none"`` so the manifest's REQUIRED validation passes
@@ -137,6 +138,116 @@ def _detect_tokenizer_info(model_id: str | None) -> dict[str, Any]:
         "pad_token_id": None,
         "pad_side": None,
     }
+
+
+def _config_hash(model: Any) -> str | None:
+    """Stable SHA-256 of the model's config dict (sorted keys).
+
+    This is the v0.3.6 Phase 3.1 config_hash: it captures the model
+    architecture (hidden_size, num_layers, num_heads, vocab_size,
+    intermediate_size, max_position_embeddings, etc.) so two runs that
+    load "the same" repo at different revisions can be distinguished
+    even when the repo id matches.
+    """
+    cfg = getattr(model, "config", None)
+    if cfg is None:
+        return None
+    try:
+        # to_dict is the HF PretrainedConfig API; sorted for stability.
+        cfg_dict = cfg.to_dict()
+    except Exception:
+        return None
+    return hashlib.sha256(
+        json.dumps(cfg_dict, sort_keys=True, default=str).encode("utf-8")
+    ).hexdigest()
+
+
+def _chat_template_hash(tokenizer: Any) -> str | None:
+    """Stable SHA-256 of the tokenizer's chat template string.
+
+    v0.3.6 Phase 3.1: a chat-template change silently alters routing
+    decisions (the rendered prompt boundary moves), so the manifest must
+    record the template hash to make such drift detectable across runs.
+    Returns None when the tokenizer has no chat template.
+    """
+    template = getattr(tokenizer, "chat_template", None)
+    if not template:
+        return None
+    return hashlib.sha256(template.encode("utf-8")).hexdigest()
+
+
+def _dtype_name(model: Any) -> str | None:
+    """A stable string name for the model's parameter dtype."""
+    try:
+        dt = next(model.parameters()).dtype
+        return str(dt).replace("torch.", "")
+    except Exception:
+        return None
+
+
+def enrich_model_info_from_loaded_model(
+    model_info: dict[str, Any],
+    model: Any,
+) -> dict[str, Any]:
+    """v0.3.6 Phase 3.1: auto-fill headline-required model provenance
+    fields (revision, config_hash, hidden_size, num_layers, dtype) from
+    a loaded HuggingFace model.
+
+    ``revision`` is read from ``model.config._commit_hash`` when present
+    (HF sets this on local loads from the cache). ``config_hash`` is a
+    SHA-256 of ``config.to_dict()``. ``hidden_size`` and ``num_layers``
+    are read from the config (with GPT-2 fallbacks to ``n_embd`` /
+    ``n_layer``). ``dtype`` is the dtype of the first parameter.
+
+    The ``repo`` field is preserved from ``model_info`` (the caller
+    already knows the repo id; the loaded model may not).
+    """
+    cfg = getattr(model, "config", None)
+    out = dict(model_info)
+    if cfg is not None:
+        out["hidden_size"] = (
+            getattr(cfg, "hidden_size", None)
+            or getattr(cfg, "n_embd", None)
+        )
+        out["num_layers"] = (
+            getattr(cfg, "num_hidden_layers", None)
+            or getattr(cfg, "n_layer", None)
+        )
+        rev = getattr(cfg, "_commit_hash", None)
+        if rev:
+            out["revision"] = str(rev)
+        out["config_hash"] = _config_hash(model)
+    out["dtype"] = _dtype_name(model)
+    return out
+
+
+def enrich_tokenizer_info_from_loaded_tokenizer(
+    tokenizer_info: dict[str, Any],
+    tokenizer: Any,
+) -> dict[str, Any]:
+    """v0.3.6 Phase 3.1: auto-fill headline-required tokenizer
+    provenance fields (revision, chat_template_hash, pad_token_id,
+    pad_side) from a loaded HuggingFace tokenizer.
+
+    ``revision`` is read from ``tokenizer.vocab_files_paths`` when
+    available, falling back to ``tokenizer.init_kwargs`` if present.
+    ``chat_template_hash`` is a SHA-256 of the chat template string
+    (None when no template is set). ``pad_token_id`` and ``pad_side``
+    are read directly.
+    """
+    out = dict(tokenizer_info)
+    out["chat_template_hash"] = _chat_template_hash(tokenizer)
+    out["pad_token_id"] = getattr(tokenizer, "pad_token_id", None)
+    out["pad_side"] = getattr(tokenizer, "padding_side", None)
+    # Best-effort revision: HF sets _commit_hash on the tokenizer's
+    # underlying tokenizer files when loaded from the cache.
+    rev = getattr(tokenizer, "_commit_hash", None)
+    if not rev:
+        init_kwargs = getattr(tokenizer, "init_kwargs", None) or {}
+        rev = init_kwargs.get("_commit_hash") if isinstance(init_kwargs, dict) else None
+    if rev:
+        out["revision"] = str(rev)
+    return out
 
 
 def _vector_entry_from_steering_vector(
@@ -248,6 +359,8 @@ def emit_manifest(
     additional_environment: Mapping[str, Any] | None = None,
     additional_decoding: Mapping[str, Any] | None = None,
     validate_headline: bool = False,
+    loaded_model: Any | None = None,
+    loaded_tokenizer: Any | None = None,
 ) -> tuple[str, RunManifest]:
     """Build, validate, and write a run manifest next to ``output_path``.
 
@@ -257,6 +370,14 @@ def emit_manifest(
     check the headline-required fields (this will currently fail for any
     run that uses steering vectors, because v0.3.5 vectors do not carry
     capture provenance — that is the intended behavior).
+
+    v0.3.6 Phase 3.1: when ``loaded_model`` and ``loaded_tokenizer`` are
+    supplied, the model and tokenizer info dicts are enriched with the
+    headline-required provenance fields (``revision``, ``config_hash``,
+    ``hidden_size``, ``num_layers``, ``dtype``, ``chat_template_hash``,
+    ``pad_token_id``, ``pad_side``) that the v0.3.5 best-effort detector
+    left as None. This makes a run manifest headline-eligible without
+    the caller having to fill those fields manually.
 
     Validation failures raise
     :class:`daph_learning.evaluation.manifest.ManifestValidationError`.
@@ -312,11 +433,22 @@ def emit_manifest(
     if additional_decoding:
         decoding.update(dict(additional_decoding))
 
+    # v0.3.6 Phase 3.1: auto-fill headline model/tokenizer provenance
+    # from the loaded objects when the caller passes them in.
+    model_info = _detect_model_info(model_id)
+    tokenizer_info = _detect_tokenizer_info(model_id)
+    if loaded_model is not None:
+        model_info = enrich_model_info_from_loaded_model(model_info, loaded_model)
+    if loaded_tokenizer is not None:
+        tokenizer_info = enrich_tokenizer_info_from_loaded_tokenizer(
+            tokenizer_info, loaded_tokenizer
+        )
+
     manifest = build_manifest(
         run_id=run_id,
         daph_version=DAPH_VERSION,
-        model=_detect_model_info(model_id),
-        tokenizer=_detect_tokenizer_info(model_id),
+        model=model_info,
+        tokenizer=tokenizer_info,
         dataset=_dataset_entry(
             dataset_path,
             split=dataset_split,

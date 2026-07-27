@@ -90,6 +90,47 @@ def test_classify_outcome_uses_task_expected_when_not_provided():
     assert classify_outcome(task, "symbolic", "FINAL: 6") == "misrouted"
 
 
+# --- v0.3.6 Phase 1.1: route_raw for generate-mode multi-token outputs ---
+
+def test_classify_outcome_route_raw_recovers_unparseable_symbolic():
+    """When the parsed route is None (generation produced no clean ACTION),
+    route_raw lets classify_outcome recover the intended route from the raw
+    generated text. This is the multi-token tokenizer repair: a Qwen2.5
+    generation of " SY", "MBOL", "IC" decodes to "SYMBOLIC" but the parser
+    may have received a truncated/normalized form."""
+    task = {"task_id": "t1", "expected": 42, "capability_ids": ["integer_arithmetic"]}
+    # route=None, route_raw="SYMBOLIC" -> recovered to "symbolic", then
+    # symbolic output FINAL: 42 -> correct.
+    assert classify_outcome(
+        task, None, "FINAL: 42", route_raw="SYMBOLIC"
+    ) == "correct"
+
+
+def test_classify_outcome_route_raw_recovers_unparseable_llm():
+    """route_raw="LLM" with route=None recovers to the llm branch."""
+    task = {"task_id": "t1", "expected": None, "capability_ids": []}
+    assert classify_outcome(
+        task, None, "The sky is blue.", route_raw="LLM"
+    ) == "correct"
+
+
+def test_classify_outcome_route_raw_llm_carries_expected_value():
+    """When route=llm and output is None but route_raw contains the expected
+    integer, the outcome is correct (the generate-mode path produced the
+    answer in the route text itself)."""
+    task = {"task_id": "t1", "expected": 42, "capability_ids": ["integer_arithmetic"]}
+    assert classify_outcome(
+        task, "llm", None, route_raw="The answer is 42."
+    ) == "correct"
+
+
+def test_classify_outcome_route_raw_none_does_not_change_behavior():
+    """Passing route_raw=None preserves the pre-v0.3.6 behavior exactly."""
+    task = {"task_id": "t1", "expected": 42, "capability_ids": ["integer_arithmetic"]}
+    assert classify_outcome(task, "symbolic", "FINAL: 42", route_raw=None) == "correct"
+    assert classify_outcome(task, "llm", "no number here", route_raw=None) == "unverifiable"
+
+
 # --- Learning loop tests ---
 
 def _make_fake_model(hidden_size=4, num_layers=2, model_id="fake-model"):
@@ -356,9 +397,11 @@ def test_route_with_steering_generate_fake_model():
     tasks = _make_tasks(4)
     routes = _route_with_steering_generate(tasks, model, tok, vec, 1.0, prompt_format="raw")
     assert len(routes) == 4
-    # Routes should be strings or None
+    # Routes should be (route, raw_text) tuples
     for r in routes:
-        assert r is None or r in ("symbolic", "llm")
+        route, raw = r
+        assert route is None or route in ("symbolic", "llm")
+        assert raw is None or isinstance(raw, str)
 
 
 def test_route_without_steering_generate_fake_model():

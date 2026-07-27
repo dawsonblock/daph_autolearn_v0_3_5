@@ -224,6 +224,7 @@ def test_alpha_grid_sweeps_independent_configurations(tmp_path: Path, monkeypatc
         "--vector-bundle", bundle,
         "--alpha-grid", "0.5,1.0", "1.0,2.0", "2.0,0.5",
         "--prompt-format", "raw",
+        "--route-token-resolver", "isolated",
         "--output", str(output),
         "--no-manifest",
     ])

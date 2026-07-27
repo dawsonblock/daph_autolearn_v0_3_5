@@ -16,7 +16,6 @@ from daph_learning.execution.symbolic_executor import (
     execute_plan,
     plan_from_structured_task,
 )
-from daph_learning.tools.symbolic_math import SymbolicMathError
 from daph_learning.steering.extract import contrastive_mean_direction
 from daph_learning.steering.hooks import capture_layer_output
 from daph_learning.steering.types import SteeringSpec, SteeringVector
@@ -29,10 +28,11 @@ OutcomeLabel = Literal["correct", "misrouted", "unverifiable"]
 
 def classify_outcome(
     task: dict[str, Any],
-    route: str,
+    route: str | None,
     output: str | None,
     *,
     expected: Any | None = None,
+    route_raw: str | None = None,
 ) -> OutcomeLabel:
     """Classify the outcome of a routed task execution.
 
@@ -56,8 +56,29 @@ def classify_outcome(
       clearly contains the expected value.
     - If route=llm and task has no expected answer (non-symbolic task):
       correct (the LLM was the right choice).
+
+    ``route_raw`` (v0.3.6) is the raw generated route text when the route
+    decision came from autoregressive generation rather than direct-logit
+    contrast (e.g. for multi-token tokenizers where the first-token logit
+    contrast is unavailable). When the parsed ``route`` is ``None``-ish
+    (unparseable generation), ``route_raw`` is inspected directly so a
+    generated ``"SYMBOLIC"``/``"LLM"`` token sequence is still credited
+    instead of being silently dropped. This is the Phase 1.1 repair: it
+    lets the AutoLearn loop converge on multi-token tokenizers (Qwen2.5)
+    where the isolated/contextual resolvers previously raised and the
+    generate-mode fallback returned ``None`` for every task.
     """
     expected = expected if expected is not None else task.get("expected")
+
+    # v0.3.6: when the caller passes a parsed route of None (generation
+    # produced no parseable ACTION), inspect route_raw directly. This keeps
+    # multi-token generated outputs (e.g. " SYMBOLIC" emitted as " SY",
+    # "MBOL", "IC" then decoded) from being silently treated as LLM.
+    if route is None and route_raw:
+        from daph_learning.routing.steered_router import parse_route_action
+        parsed = parse_route_action(route_raw)
+        if parsed is not None:
+            route = parsed
 
     if route == "symbolic":
         # Symbolic execution outcome is checked by the caller (who caught
@@ -77,17 +98,22 @@ def classify_outcome(
             return "correct"  # no expected value to check
         return "misrouted"  # malformed symbolic output
 
-    # route == "llm"
+    # route == "llm" (or still None — treat as LLM default)
     if expected is None:
         # Non-symbolic task routed to LLM — correct by default
         return "correct"
 
-    # Symbolic-capable task routed to LLM — check if the LLM got it right
+    # Symbolic-capable task routed to LLM — check if the LLM got it right.
+    # v0.3.6: also check route_raw when output is unavailable, since on the
+    # generate-mode routing path the "output" is the route text itself.
+    candidate_texts: list[str] = []
     if output is not None:
-        output_stripped = output.strip()
+        candidate_texts.append(output.strip())
+    if route_raw is not None:
+        candidate_texts.append(route_raw.strip())
+    for text in candidate_texts:
         try:
-            # Check if the expected value appears in the output
-            if str(int(expected)) in output_stripped:
+            if str(int(expected)) in text:
                 return "correct"
         except (ValueError, TypeError):
             pass
@@ -244,7 +270,7 @@ def _execute_symbolic(task: dict[str, Any]) -> tuple[str | None, bool]:
         plan = plan_from_structured_task(task, reason_code="autolearn")
         result = execute_plan(plan)
         return f"FINAL: {result.value}", result.verified
-    except (SymbolicMathError, SyntaxError, ZeroDivisionError, ValueError, Exception):
+    except Exception:
         return None, False
 
 
@@ -257,7 +283,7 @@ def _route_with_steering_generate(
     *,
     prompt_format: str = "raw",
     max_new_tokens: int = 5,
-) -> list[str]:
+) -> list[tuple[str | None, str | None]]:
     """Route tasks using steering + generate mode.
 
     This is the fallback for tokenizers where direct-logit routing fails
@@ -265,15 +291,16 @@ def _route_with_steering_generate(
     the steering vector via a residual addition hook, generates a few
     tokens, and parses the route action from the generated text.
 
-    Returns a list of route strings ("symbolic", "llm", or None if
-    parsing fails).
+    Returns a list of ``(route, raw_text)`` tuples where ``route`` is
+    "symbolic", "llm", or None if parsing fails, and ``raw_text`` is
+    the decoded generation (for downstream route_raw recovery).
     """
     import torch
     from daph_learning.routing.steered_router import build_route_prompt, parse_route_action
     from daph_learning.steering.hooks import residual_addition_hook
 
     embed_device = model.get_input_embeddings().weight.device
-    routes: list[str | None] = []
+    routes: list[tuple[str | None, str | None]] = []
 
     for task in tasks:
         prompt = build_route_prompt(task)
@@ -310,9 +337,9 @@ def _route_with_steering_generate(
                 skip_special_tokens=True,
             ).strip()
             action = parse_route_action(generated)
-            routes.append(action)
+            routes.append((action, generated))
         except Exception:
-            routes.append(None)
+            routes.append((None, None))
 
     return routes
 
@@ -486,6 +513,7 @@ def run_autolearn_loop(
     for iteration in range(config.n_iterations):
         # --- Stage 1: Route and execute training tasks ---
         routes: dict[str, str] = {}
+        route_raws: dict[str, str | None] = {}
         outputs: dict[str, str | None] = {}
 
         if current_vector is not None and route_fn is None:
@@ -496,25 +524,38 @@ def run_autolearn_loop(
                     task_list, model, tokenizer, current_vector, config.alpha,
                     prompt_format=prompt_format,
                 )
-                for task, route in zip(task_list, steered_route_list):
+                for task, (route, raw) in zip(task_list, steered_route_list):
                     routes[task["task_id"]] = route if route else "llm"
+                    route_raws[task["task_id"]] = raw
             else:
-                # Try logit-based routing
+                # v0.3.6 routing cascade: contextual first-token logit
+                # contrast → isolated first-token contrast → generate mode.
+                # The first-token fallback lets the loop keep using the
+                # cheap single-forward logit path on multi-token tokenizers
+                # (Qwen2.5) instead of immediately dropping to per-task
+                # autoregressive generation. See Phase 1.1.
                 task_map = _as_task_map(train_tasks)
                 task_list = list(task_map.values())
-                try:
-                    steered_routes = _evaluate_batch_steered_routes(
-                        task_list,
-                        model,
-                        tokenizer,
-                        vectors=[current_vector],
-                        alphas=[config.alpha],
-                        prompt_format=prompt_format,
-                        token_resolver="isolated",
-                    )
-                    for task, route_record in zip(task_list, steered_routes):
-                        routes[task["task_id"]] = route_record["route"]
-                except (ValueError, Exception):
+                routed_via_logit = False
+                for resolver in ("contextual", "isolated"):
+                    try:
+                        steered_routes = _evaluate_batch_steered_routes(
+                            task_list,
+                            model,
+                            tokenizer,
+                            vectors=[current_vector],
+                            alphas=[config.alpha],
+                            prompt_format=prompt_format,
+                            token_resolver=resolver,
+                            allow_first_token_fallback=True,
+                        )
+                        for task, route_record in zip(task_list, steered_routes):
+                            routes[task["task_id"]] = route_record["route"]
+                        routed_via_logit = True
+                        break
+                    except Exception:
+                        continue
+                if not routed_via_logit:
                     if routing_mode == "logit":
                         raise
                     # Fall back to generate mode
@@ -523,8 +564,9 @@ def run_autolearn_loop(
                         task_list, model, tokenizer, current_vector, config.alpha,
                         prompt_format=prompt_format,
                     )
-                    for task, route in zip(task_list, steered_route_list):
+                    for task, (route, raw) in zip(task_list, steered_route_list):
                         routes[task["task_id"]] = route if route else "llm"
+                        route_raws[task["task_id"]] = raw
         else:
             # No vector yet — use heuristic routing
             for task in train_tasks:
@@ -553,7 +595,9 @@ def run_autolearn_loop(
             tid = task["task_id"]
             route = routes[tid]
             output = outputs[tid]
-            outcome = classify_outcome(task, route, output)
+            outcome = classify_outcome(
+                task, route, output, route_raw=route_raws.get(tid),
+            )
 
             if outcome == "correct":
                 n_correct += 1
@@ -642,35 +686,43 @@ def run_autolearn_loop(
                     val_recall = float(val_metrics["recall"])
                 else:
                     val_map = _as_task_map(val_tasks)
-                    try:
-                        val_routes = _evaluate_batch_steered_routes(
-                            val_list,
-                            model,
-                            tokenizer,
-                            vectors=[current_vector],
-                            alphas=[config.alpha],
-                            prompt_format=prompt_format,
-                            token_resolver="isolated",
-                        )
-                        val_metrics = eval_fn(
-                            val_map,
-                            val_routes,
-                            label_field=label_field,
-                            label_oracle_kind=label_oracle_kind,
-                        )
-                        val_f1 = float(val_metrics["f1"])
-                        val_accuracy = float(val_metrics["route_accuracy"])
-                        val_precision = float(val_metrics["precision"])
-                        val_recall = float(val_metrics["recall"])
-                    except (ValueError, Exception):
+                    val_routed_via_logit = False
+                    for resolver in ("contextual", "isolated"):
+                        try:
+                            val_routes = _evaluate_batch_steered_routes(
+                                val_list,
+                                model,
+                                tokenizer,
+                                vectors=[current_vector],
+                                alphas=[config.alpha],
+                                prompt_format=prompt_format,
+                                token_resolver=resolver,
+                                allow_first_token_fallback=True,
+                            )
+                            val_metrics = eval_fn(
+                                val_map,
+                                val_routes,
+                                label_field=label_field,
+                                label_oracle_kind=label_oracle_kind,
+                            )
+                            val_f1 = float(val_metrics["f1"])
+                            val_accuracy = float(val_metrics["route_accuracy"])
+                            val_precision = float(val_metrics["precision"])
+                            val_recall = float(val_metrics["recall"])
+                            val_routed_via_logit = True
+                            break
+                        except Exception:
+                            continue
+                    if not val_routed_via_logit:
                         # Fall back to generate mode for validation too
                         use_generate_mode = True
                         val_route_list = _route_with_steering_generate(
                             val_list, model, tokenizer, current_vector, config.alpha,
                             prompt_format=prompt_format,
                         )
+                        val_routes_only = [r for r, _ in val_route_list]
                         val_metrics = _evaluate_routes_simple(
-                            val_list, val_route_list,
+                            val_list, val_routes_only,
                             label_field=label_field or "route_label",
                         )
                         val_f1 = float(val_metrics["f1"])

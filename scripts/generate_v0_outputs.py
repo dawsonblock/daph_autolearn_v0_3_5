@@ -391,12 +391,25 @@ def main() -> None:
     ap.add_argument(
         "--route-token-resolver",
         choices=["isolated", "contextual"],
-        default="isolated",
+        default="contextual",
         help=(
             "How to resolve route-label token IDs for direct-logit routing. "
-            "'isolated' (default) tokenizes labels via encode() in isolation; "
-            "'contextual' derives the continuation token from the actual "
-            "rendered prompt. See CLAIMS.md §9."
+            "'contextual' (v0.3.6 default) derives the continuation token "
+            "from the actual rendered prompt, eliminating the BPE boundary "
+            "assumption that fails for Qwen2.5 / Llama-3 / Mistral. "
+            "'isolated' tokenizes labels via encode() in isolation (v0.3.4 "
+            "behaviour, kept for backward comparison). See CLAIMS.md §9."
+        ),
+    )
+    ap.add_argument(
+        "--allow-first-token-fallback",
+        action="store_true",
+        help=(
+            "v0.3.6: when a route label tokenizes to multiple sub-words "
+            "(e.g. Qwen2.5 'SYMBOLIC' → [' SY','MBOL','IC']), reduce it to "
+            "its first continuation token so the logit-contrast path stays "
+            "available instead of falling through to autoregressive "
+            "generation. See Phase 1.1."
         ),
     )
     ap.add_argument("--route-logit-threshold", type=float, default=0.0)
@@ -577,6 +590,7 @@ def main() -> None:
                         threshold=args.route_logit_threshold,
                         leading_space=None,
                         token_resolver=args.route_token_resolver,
+                        allow_first_token_fallback=args.allow_first_token_fallback,
                     )
                     for local_index, (action, margin) in enumerate(scored):
                         actions[local_index] = action
@@ -839,6 +853,8 @@ def main() -> None:
                 reasoning_vectors=reasoning_vectors,
                 reasoning_vector_paths=reasoning_vector_paths,
                 reasoning_alphas=reasoning_alphas,
+                loaded_model=model if args.model else None,
+                loaded_tokenizer=tokenizer if args.model else None,
             )
             print(manifest_reference_line(sha, Path(str(out_path) + ".manifest.json")))
         except ManifestValidationError as exc:
