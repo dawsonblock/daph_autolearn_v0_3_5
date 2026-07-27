@@ -1,4 +1,4 @@
-# DAPH AutoLearn v0.3.6
+# DAPH AutoLearn v0.3.7
 
 **A falsifiable research harness for LLM tool-routing via residual activation steering.**
 
@@ -551,6 +551,25 @@ Run manifests (`daph.run.v1`) record full provenance: model revision, tokenizer 
 ---
 
 ## Changelog
+
+### v0.3.7
+
+- **V037-001**: Fixed `route_fn` dead path. Custom routers supplied to
+  `run_autolearn_loop` were silently ignored due to a conditional check;
+  replaced with a `RouteDecision` dataclass + `route_tasks` dispatcher and
+  added contract tests.
+- **V037-002**: Removed the library layer's dependency on `scripts/`.
+  Reusable evaluation, routing, task-formatting, and manifest logic moved
+  into `src/daph_learning/{evaluation,routing,data,experiments}/`; CLI
+  scripts now import from the library, never the reverse. The dependency
+  direction is now `CLI → package` only.
+- **V037-003**: Replaced every `except Exception:` in `src/` with typed
+  catches from a new `daph_learning.routing.errors` taxonomy
+  (`MultiTokenRouteError`, `ContextBoundaryError`,
+  `SteeringApplicationError`, `ModelRoutingError`, ...). Every routing
+  fallback now emits structured telemetry via `daph_learning.telemetry`.
+  A pre-existing iteration bug in the training routing cascade — masked
+  by the old bare-except — was fixed.
 
 ### v0.3.6
 

@@ -1,4 +1,4 @@
-# DAPH AutoLearn v0.3.5 — Licensed Claims
+# DAPH AutoLearn v0.3.7 — Licensed Claims
 
 This file pins down what each term used in this repository is *currently licensed
 to assert* about the system. It exists because the most damaging failure mode
@@ -171,9 +171,18 @@ behind a flag. It is a separate research program.
 
 ---
 
-## 6. "205 passing tests"
+## 6. "348 passing tests"
 
 **Status: ESTABLISHED as engineering regression — PARTIAL scientific qualification.**
+
+v0.3.7 reports 348 passed, 1 skipped (was 320 + 4 pre-existing failures in
+v0.3.6; the v0.3.6 failures were caused by `src/` importing from `scripts/`,
+which V037-002 fixed). The v0.3.7 additions:
+
+- 8 `route_fn` contract tests (V037-001)
+- 3 src→scripts dependency-direction tests (V037-002)
+- 17 typed-error + telemetry tests (V037-003)
+- 8 version + claims discipline tests (V037-004)
 
 v0.3.5 added 14 real-model integration tests
 (`tests/test_real_model_integration.py`) using `sshleifer/tiny-gpt2`. These
@@ -199,8 +208,8 @@ This partially closes the real-model gap from the audit §24. However:
 
 The full qualification gate (Qwen2.5-3B-Instruct + chat template + anchor
 mapping + multi-layer hooks + left-padded batching + direct logits + KV
-cache + model.generate()) remains a P0 item for v0.3.6. Until then, "164
-passing tests" must be quoted with the qualification "unit, regression, and
+cache + model.generate()) remains a P0 item. Until then, "348 passing
+tests" must be quoted with the qualification "unit, regression, and
 toy-model integration tests; full-scale real-model qualification pending."
 
 ---
@@ -394,12 +403,18 @@ Key findings:
    perfectly separates the classes in a classifier may not be the
    direction that causally flips the model's output.
 
-3. **The AutoLearn loop did not update** because its internal routing
-   uses `score_route_batch_from_logits`, which requires single-token
-   labels. Qwen2.5 tokenizes both "SYMBOLIC" and "LLM" as multi-token,
-   so the logit router fails and the loop falls back to heuristic
-   routing. The loop needs generate-mode routing support to work with
-   this tokenizer. This is a known limitation.
+3. **The AutoLearn loop did not update** on the v0.3.5 run because its
+   internal routing uses `score_route_batch_from_logits`, which requires
+   single-token labels. Qwen2.5 tokenizes both "SYMBOLIC" and "LLM" as
+   multi-token, so the logit router failed and the loop fell back to
+   heuristic routing. **v0.3.7 (V037-003) addresses the failure-handling
+   side of this**: the routing cascade now catches
+   `MultiTokenRouteError` and `ContextBoundaryError` specifically (with
+   structured telemetry) and falls back through contextual → isolated →
+   generate mode instead of silently swallowing the failure. The loop
+   still needs to be re-run on Qwen2.5-1.5B-Instruct to confirm the
+   generate-mode fallback actually produces useful routing signal; that
+   re-run is a v0.3.8 item.
 
 4. **Key hyperparameters matter**: L2-normalized vectors (norm=1) had no
    effect even at alpha=20, because the residual stream norm is ~71.
@@ -448,6 +463,68 @@ experiment has yet collected telemetry at scale on a real model, so the
 typical ranges of these statistics for v0.3.5 steering vectors are
 **not yet** characterized. Until then, telemetry is available for
 diagnostic use but not for headline claims.
+
+---
+
+## 19. v0.3.7 engineering changes (route_fn, dependency direction, typed errors)
+
+**Status: ESTABLISHED as engineering — no change to scientific claims.**
+
+v0.3.7 is an engineering/repair release. It does not add new scientific
+evidence and does not upgrade any `NOT YET` claim to `ESTABLISHED`. The
+changes are:
+
+### V037-001: `route_fn` dead path
+
+The v0.3.6 `run_autolearn_loop` accepted a `route_fn` argument but never
+executed it (a conditional check silently bypassed the custom router).
+v0.3.7 introduces a `RouteDecision` dataclass and `route_tasks` dispatcher
+in `src/daph_learning/routing/policy.py`; the loop now calls `route_tasks`
+when `route_fn` is supplied. Custom-router exceptions propagate (they are
+not swallowed).
+
+**Scientific impact**: none. This fixes a wiring bug; no experiment used
+`route_fn` before. The fix makes future counterfactual-router experiments
+possible.
+
+### V037-002: library no longer depends on `scripts/`
+
+The v0.3.6 library layer imported reusable helpers from the CLI layer,
+inverting the correct dependency direction. v0.3.7 moves the reusable
+logic into `src/daph_learning/{evaluation,routing,data,experiments}/` and
+adds an AST-based guard (`tests/test_no_scripts_imports.py`) enforcing
+that no `src/daph_learning/**` module imports from `scripts/`.
+
+**Scientific impact**: none. This is a packaging/layering fix. It does
+make the package installable without the `scripts/` directory on the
+path, which is a prerequisite for V037-006 (CLI entry points).
+
+### V037-003: typed errors + telemetry replace bare `except Exception`
+
+The v0.3.6 routing cascade used `except Exception: continue` to swallow
+every failure, including programmer bugs and infrastructure crashes. This
+made silent degradation undetectable and masked a pre-existing iteration
+bug in the training cascade (`zip(task_list, steered_routes)` where
+`steered_routes` is a dict, yielding keys not items).
+
+v0.3.7 introduces a typed error taxonomy
+(`daph_learning.routing.errors`) and structured telemetry
+(`daph_learning.telemetry`). Every routing fallback now emits a JSON
+event like `{"event":"route_fallback","from":"contextual","to":"isolated",
+"reason":"multi_token_label","iteration":0}` to an in-process list and a
+configurable sink.
+
+**Scientific impact**: partial. The masked iteration bug means any v0.3.6
+run that hit the steered routing cascade on a multi-token tokenizer
+(e.g. Qwen2.5) silently produced wrong routes for the affected batch. Any
+v0.3.5/v0.3.6 result that relied on the steered routing path on a
+multi-token tokenizer should be re-checked. The §18 Qwen2.5-1.5B-Instruct
+result is not affected because the loop fell back to heuristic routing
+before reaching the buggy iteration (the logit router raised before the
+iteration ran). The typed-error cascade also means the loop now correctly
+falls back to generate mode on multi-token tokenizers instead of silently
+swallowing — but this has not yet been re-run on a real model (see §18
+update above).
 
 ---
 

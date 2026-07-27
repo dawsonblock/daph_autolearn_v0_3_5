@@ -1,3 +1,65 @@
+# 0.3.7 (route_fn + dependency direction + typed errors)
+
+- **V037-001 — route_fn dead path**: `run_autolearn_loop` accepted a
+  `route_fn` argument but never executed it (a conditional check silently
+  bypassed the custom router). Introduced `RouteDecision` dataclass and
+  `route_tasks` dispatcher in `src/daph_learning/routing/policy.py`;
+  `run_autolearn_loop` now calls `route_tasks` when `route_fn` is supplied.
+  Added `tests/test_route_fn_contract.py` covering the dispatch contract,
+  `RouteDecision` coercion, and exception propagation (custom routers
+  must not be silently swallowed).
+- **V037-002 — library no longer depends on scripts/**: the v0.3.6 library
+  layer imported reusable helpers from the CLI layer
+  (`from scripts.evaluate_routes import ...`, `from scripts.tune_steering
+  import ...`), inverting the correct dependency direction. Moved the
+  reusable logic into new library modules:
+    - `src/daph_learning/evaluation/routes.py` — `evaluate_route_records`,
+      `load_jsonl`
+    - `src/daph_learning/routing/batched.py` —
+      `evaluate_batch_steered_routes`, `as_task_map`, `score_key`, `chunks`
+    - `src/daph_learning/data/task_utils.py` — `format_for_model`, `load_llm`
+    - `src/daph_learning/experiments/manifest.py` — `emit_manifest`,
+      `manifest_reference_line`, `GitInfo`, enrich helpers
+  `scripts/_manifest.py` is now a thin re-export shim for backward
+  compatibility. All scripts import from `daph_learning.*` directly (no
+  cross-script imports). Added `tests/test_no_scripts_imports.py` (AST +
+  text scan) enforcing that no `src/daph_learning/**` module imports from
+  `scripts/`. Side effect: the pre-existing
+  `tests/test_v032_repairs.py` / `tests/test_v033_repairs.py` subprocess
+  failures (scripts/evaluate_routes.py invoked as a subprocess could not
+  import `scripts._manifest` when only `PYTHONPATH=src` was set) are now
+  fixed. Full suite passes with `PYTHONPATH=src` only.
+- **V037-003 — typed errors + telemetry**: replaced every
+  `except Exception:` in `src/` with typed catches from a new
+  `daph_learning.routing.errors` taxonomy:
+    - `RouteResolutionError` (base)
+    - `MultiTokenRouteError(ValueError, RouteResolutionError)`
+    - `ContextBoundaryError(ValueError, RouteResolutionError)`
+    - `InvalidRouteDecisionError(RouteResolutionError)`
+    - `SteeringApplicationError`
+    - `ModelRoutingError`
+  `MultiTokenRouteError` and `ContextBoundaryError` subclass `ValueError`
+  so existing `except ValueError` callers and `pytest.raises(ValueError)`
+  tests keep working. Every routing fallback now emits structured
+  telemetry via `daph_learning.telemetry.emit_fallback` (in-process event
+  list + configurable sink). A pre-existing iteration bug in the training
+  routing cascade — `zip(task_list, steered_routes)` where
+  `steered_routes` is a dict, yielding keys not items — was masked by the
+  old bare-except and is now fixed. Added
+  `tests/test_exception_fallbacks.py` (17 tests covering the taxonomy,
+  backward-compat, typed raises, telemetry, propagation).
+- **V037-004 — version + claims discipline**: bumped version surfaces
+  (`pyproject.toml`, `__init__.py`, `README.md`) to 0.3.7. Updated
+  `CLAIMS.md` header to v0.3.7 and added §19 documenting the v0.3.7
+  engineering changes and their (non-)impact on the scientific claims.
+  Updated §6 test count to 340 passing. Updated §18 AutoLearn status to
+  reflect that the multi-token tokenizer limitation that previously
+  prevented the loop from updating is now addressed by the typed-error
+  cascade with telemetry (the loop now correctly falls back to generate
+  mode instead of silently swallowing).
+
+Test count: 348 passed, 1 skipped (was 320 + 4 pre-existing failures).
+
 # 0.3.5 (manifest + claims patch)
 
 - Added `CLAIMS.md` pinning down what each term used in the repository is
