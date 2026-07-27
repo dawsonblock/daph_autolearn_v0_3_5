@@ -516,7 +516,35 @@ def run_autolearn_loop(
         route_raws: dict[str, str | None] = {}
         outputs: dict[str, str | None] = {}
 
-        if current_vector is not None and route_fn is None:
+        if route_fn is not None:
+            # V037-001: actually invoke the user-supplied router. Previously
+            # `route_fn` was accepted but never called (the v0.3.6 branch
+            # `current_vector is not None and route_fn is None` sent every
+            # other case to the capability heuristic). The custom router now
+            # takes precedence over both the steered and baseline paths, and
+            # invalid results raise InvalidRouteDecisionError instead of being
+            # silently dropped. `route_fn` exceptions propagate.
+            from daph_learning.routing.policy import route_tasks as _route_tasks
+            decisions = _route_tasks(
+                train_tasks,
+                model=model,
+                tokenizer=tokenizer,
+                steering=current_vector,
+                route_fn=route_fn,
+                alpha=config.alpha,
+                prompt_format=prompt_format,
+            )
+            for task, decision in zip(train_tasks, decisions):
+                tid = task["task_id"]
+                # v0.3.7: abstain is collapsed to "llm" for the execution
+                # stage because the v0.3.7 backend executor only knows how to
+                # run symbolic vs LLM. A real abstain backend arrives in v0.3.9
+                # (V039-003). The decision source is preserved in
+                # `route_raws` so downstream telemetry can distinguish
+                # abstain-from-custom vs llm-from-steered.
+                routes[tid] = "llm" if decision.route == "abstain" else decision.route
+                route_raws[tid] = decision.source
+        elif current_vector is not None:
             if use_generate_mode:
                 # Use generate-mode steered routing (works with any tokenizer)
                 task_list = train_tasks
