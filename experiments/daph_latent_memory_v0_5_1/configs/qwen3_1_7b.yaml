@@ -27,6 +27,13 @@ evaluation:
   leakage_max_accuracy: 0.75
   generation_max_new_tokens: 48
   temperature: 0.0
+  # Whether model.generate(inputs_embeds=...) returns the embeds prefix as token
+  # IDs in addition to the generated continuation. In transformers>=4.51 the
+  # embeds path returns ONLY the newly generated tokens, so the default is
+  # False. Set to True only after verifying the installed transformers version
+  # prepends the prefix; otherwise predictions, token counts, accuracy, and
+  # utility will be corrupted by stripping real generated tokens.
+  embeds_generate_includes_prefix: false
 utility:
   accuracy_weight: 1.0
   latency_weight: 0.01

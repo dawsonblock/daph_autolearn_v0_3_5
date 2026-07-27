@@ -23,20 +23,43 @@ from daph_latent_memory.evaluation.metrics import exact_match, bootstrap_ci, uti
 from daph_latent_memory.evaluation.leakage import leakage_probe
 
 
-def _decode_continuation(tokenizer, sequences: torch.Tensor, prefix_len: int) -> tuple[list[str], list[int]]:
-    """Decode generated continuation while robustly handling APIs that include the prefix."""
-    if sequences.ndim != 2:
+def _decode_tokens(tokenizer, token_ids: torch.Tensor) -> tuple[list[str], list[int]]:
+    """Decode a [batch, seq] tensor of token IDs into text and per-row token counts."""
+    if token_ids.ndim != 2:
         raise ValueError("Expected [batch, sequence] generated token IDs")
-    if sequences.size(1) > prefix_len:
-        continuation = sequences[:, prefix_len:]
-    else:
-        continuation = sequences
-    texts = tokenizer.batch_decode(continuation, skip_special_tokens=True)
-    counts = [int(row.numel()) for row in continuation]
+    texts = tokenizer.batch_decode(token_ids, skip_special_tokens=True)
+    counts = [int(row.numel()) for row in token_ids]
     return texts, counts
 
 
-def generate_from_embeds(model, tokenizer, prompt_ids, prompt_mask, latents, max_new):
+def generate_from_embeds(
+    model,
+    tokenizer,
+    prompt_ids,
+    prompt_mask,
+    latents,
+    max_new,
+    *,
+    embeds_return_includes_prefix: bool = False,
+):
+    """Generate from inputs_embeds (prompt embeddings + latent tokens).
+
+    HF Transformers `generate(inputs_embeds=...)` returns ONLY the newly generated
+    token IDs in transformers>=4.51: it cannot prepend the embeds prefix because
+    there are no input IDs to echo back. Therefore the entire output tensor is the
+    continuation by default.
+
+    Do NOT infer prefix semantics from sequence length. The previous heuristic
+    `if sequences.size(1) > prefix_len: sequences[:, prefix_len:]` was unsafe: when
+    the model generated more tokens than the prefix length (e.g. prefix=28,
+    generated=40), it would incorrectly strip the first 28 generated tokens,
+    corrupting prediction text, answer extraction, generated-token counts,
+    accuracy, and utility.
+
+    If a specific transformers version is verified to prepend the prefix as IDs,
+    set `embeds_return_includes_prefix=True` (or via config
+    `evaluation.embeds_generate_includes_prefix`).
+    """
     embed = model.get_input_embeddings()
     prompt_emb = embed(prompt_ids)
     latents = latents.to(device=prompt_emb.device, dtype=prompt_emb.dtype)
@@ -55,11 +78,21 @@ def generate_from_embeds(model, tokenizer, prompt_ids, prompt_mask, latents, max
         pad_token_id=tokenizer.pad_token_id,
         eos_token_id=tokenizer.eos_token_id,
     )
-    prefix_len = inputs_embeds.size(1)
-    return _decode_continuation(tokenizer, out, prefix_len)
+    if embeds_return_includes_prefix:
+        prefix_len = inputs_embeds.size(1)
+        if out.size(1) >= prefix_len:
+            out = out[:, prefix_len:]
+        # If output is shorter than the prefix (unexpected when prefix is
+        # included), leave it intact to avoid an empty decode.
+    return _decode_tokens(tokenizer, out)
 
 
 def base_generate(model, tokenizer, texts, device, max_new):
+    """Generate from input_ids.
+
+    With input_ids, `generate` always returns the full sequence (prompt prefix +
+    continuation), so strip the prompt prefix explicitly by length.
+    """
     tok = tokenizer(texts, return_tensors="pt", padding=True, truncation=True)
     tok = {k: v.to(device) for k, v in tok.items()}
     out = model.generate(
@@ -69,7 +102,10 @@ def base_generate(model, tokenizer, texts, device, max_new):
         pad_token_id=tokenizer.pad_token_id,
         eos_token_id=tokenizer.eos_token_id,
     )
-    return _decode_continuation(tokenizer, out, tok["input_ids"].size(1))
+    prefix_len = tok["input_ids"].size(1)
+    if out.size(1) >= prefix_len:
+        out = out[:, prefix_len:]
+    return _decode_tokens(tokenizer, out)
 
 
 def encode_states(encoder, tokenizer, states, device, max_state_tokens):
@@ -125,6 +161,9 @@ def main():
 
     data = load_jsonl(args.dataset)
     max_new = cfg["evaluation"]["generation_max_new_tokens"]
+    embeds_includes_prefix = bool(
+        cfg["evaluation"].get("embeds_generate_includes_prefix", False)
+    )
     rows = []
     leakage_features = []
     leakage_labels = []
@@ -174,7 +213,9 @@ def main():
             for name, z in latent_variants.items():
                 start = time.perf_counter()
                 texts, counts = generate_from_embeds(
-                    model, tokenizer, p["input_ids"], p["attention_mask"], z, max_new
+                    model, tokenizer,
+                    p["input_ids"], p["attention_mask"], z, max_new,
+                    embeds_return_includes_prefix=embeds_includes_prefix,
                 )
                 conditions[name] = (texts[0], counts[0], time.perf_counter() - start)
 
