@@ -1,0 +1,289 @@
+# DAPH AutoLearn v0.3.5 — Deep-Connected Corrected Build
+
+This build wires the previously separate pieces into one falsifiable execution stack:
+
+`task -> capability assessment -> route policy -> optional tool-policy steering -> ExecutionPlan -> typed symbolic executor -> external evaluator`
+
+LLM-only routes can independently receive a reasoning-policy vector. Tool-policy and reasoning-policy vectors are intentionally not interchangeable.
+
+## What is now actually connected
+
+- `ExecutionPlan.actions` are dispatched directly; the executor no longer ignores the plan and re-reads the task.
+- Runtime verification no longer reads `task.expected`; gold answers are only used by evaluation scripts.
+- `steered_auto` performs a real model-mediated `SYMBOLIC`/`LLM` decision pass. A `tool_policy` vector is injected only into that routing pass, at the last token position.
+- A `reasoning_policy` vector is injected only during LLM answer generation.
+- Route logs record the raw route response, fallback status, actual backend, symbolic success, and both steering phases.
+- `scripts/` is importable, so integrity inspection works from a clean checkout.
+- Historical V0 paired testing is restored as `scripts/v0_hint_ablation_gate.py` using the exact discordant-pair binomial test.
+
+## Install and validate
+
+```bash
+pip install -e '.[full]'
+pytest -q
+python scripts/build_v0_memory.py
+python scripts/inspect_integrity.py
+```
+
+The historical notebook recorded this D3 digest:
+
+```text
+db6efbd9414f32ed29d5bb0c6abbcfb4acf4e9c7a7f666fa01a7804128c8d031
+```
+
+Place the original D3 file at `data/v0_splits/D3.jsonl` and verify it:
+
+```bash
+python scripts/verify_dataset.py data/v0_splits/D3.jsonl \\
+  --sha256 db6efbd9414f32ed29d5bb0c6abbcfb4acf4e9c7a7f666fa01a7804128c8d031
+```
+
+## Deterministic symbolic arm
+
+```bash
+python scripts/generate_v0_outputs.py \\
+  --input data/v0_splits/D3.jsonl \\
+  --output data/v0_outputs/symbolic_d3.jsonl \\
+  --routes-output data/v0_outputs/symbolic_d3.routes.jsonl \\
+  --execution-mode symbolic
+```
+
+## Historical LLM arms
+
+Use `--prompt-format raw` for compatibility with the reconstructed V0 generation path. `chat` is available for instruct-model experiments but should be treated as a separate condition.
+
+```bash
+python scripts/generate_v0_outputs.py \\
+  --model Qwen/Qwen2.5-3B-Instruct \\
+  --input data/v0_splits/D3.jsonl \\
+  --output data/v0_outputs/baseline_d3.jsonl \\
+  --execution-mode baseline \\
+  --prompt-format raw
+```
+
+## Steered routing
+
+A tool-policy vector is used only for the route decision. A reasoning-policy vector is used only for an LLM answer path:
+
+```bash
+python scripts/generate_v0_outputs.py \\
+  --model Qwen/Qwen2.5-3B-Instruct \\
+  --input data/ood_router.jsonl \\
+  --output data/v0_outputs/steered_auto.jsonl \\
+  --routes-output data/v0_outputs/steered_auto.routes.jsonl \\
+  --execution-mode steered_auto \\
+  --tool-steering-vector artifacts/invoke_symbolic_tool.npz \\
+  --reasoning-steering-vector artifacts/verify_before_commit.npz \\
+  --prompt-format chat
+```
+
+Malformed route decisions fall back to the deterministic `auto` policy and are explicitly logged; they are never silently treated as successful steering.
+
+## Capture the tool-routing contrast set
+
+This closes the loop from benchmark tasks to a learned tool-policy direction. The deterministic `auto` policy labels hard exact-computation tasks as symbolic positives and easy/non-symbolic controls as negatives; the script captures the last-token residual at the route decision position.
+
+```bash
+python scripts/capture_router_activations.py \
+  --model Qwen/Qwen2.5-3B-Instruct \
+  --tasks data/ood_router.jsonl \
+  --layer 24 \
+  --positive-out artifacts/router_pos_l24.npy \
+  --negative-out artifacts/router_neg_l24.npy \
+  --metadata-out artifacts/router_l24.jsonl \
+  --prompt-format chat \
+  --label-field route_label
+```
+
+Prefer explicit human/benchmark route labels via `--label-field`; omitting it intentionally uses the deterministic `auto` policy as a bootstrap oracle. Use a development split for layer/alpha selection. Never extract vectors from the held-out final test split.
+
+## Extract a steering vector
+
+Given matched `[N,H]` activation arrays:
+
+```bash
+python scripts/extract_steering_vector.py \\
+  --positive positive.npy \\
+  --negative negative.npy \\
+  --output artifacts/invoke_symbolic_tool.npz \\
+  --vector-id tool-v1 \\
+  --family tool_policy \\
+  --behavior invoke_symbolic_tool \\
+  --layer 24 \\
+  --model-id Qwen/Qwen2.5-3B-Instruct \\
+  --capture-anchor ACTION: \\
+  --capture-prompt-format chat \\
+  --capture-dataset-path data/router_train.jsonl \\
+  --capture-dataset-sha256 <sha256-of-capture-dataset> \\
+  --positive-n 200 \\
+  --negative-n 200
+```
+
+Capture provenance flags (`--capture-*`, `--extraction-method`,
+`--normalization`, `--positive-n`, `--negative-n`) are optional for
+engineering use but **required for headline-eligible run manifests**. See
+`CLAIMS.md` and `docs/RUN_MANIFEST.md`. `capture_router_activations.py`
+emits a ready-to-paste `extract_command` with all provenance flags filled
+in.
+
+## Evaluate answer accuracy
+
+```bash
+python scripts/evaluate_outputs.py \\
+  --tasks data/v0_splits/D3.jsonl \\
+  --arm baseline=data/v0_outputs/baseline_d3.jsonl \\
+  --arm symbolic=data/v0_outputs/symbolic_d3.jsonl
+```
+
+For the old notebook parser, explicitly request `--parser legacy_first_int`. Do not mix parser definitions inside one comparison.
+
+## Reproduce the V0 paired gate
+
+```bash
+python scripts/v0_hint_ablation_gate.py \\
+  --tasks data/v0_splits/D3.jsonl \\
+  --baseline-outputs data/v0_outputs/baseline_d3.jsonl \\
+  --treatment-outputs data/v0_outputs/treatment_d3.jsonl \\
+  --parser legacy_first_int \\
+  --min-delta 0.05 \\
+  --alpha 0.01 \\
+  --expected-task-sha256 db6efbd9414f32ed29d5bb0c6abbcfb4acf4e9c7a7f666fa01a7804128c8d031
+```
+
+The notebook's 7-improved/2-regressed strict-scoring run corresponds to a two-sided exact p-value of `0.1796875`; that value is regression-tested.
+
+## Evaluate routing itself
+
+```bash
+python scripts/evaluate_routes.py \\
+  --tasks data/ood_router.jsonl \\
+  --routes data/v0_outputs/steered_auto.routes.jsonl \
+  --label-field route_label
+```
+
+With `--label-field`, this compares against explicit route gold labels. Without it, the deterministic `auto` policy is used only as a bootstrap oracle. The script reports precision, recall, F1, FP/FN counts, and malformed routes.
+
+## Safety boundary
+
+The symbolic engine does not use `eval`, `sympy.sympify`, or unrestricted SymPy parsing. Structured integer fields are preferred. The bounded AST fallback rejects names, calls, attributes, subscripts, comprehensions, floats, booleans, true division, and exponentiation, with limits on expression length, AST size/depth, input digits, and result bits.
+
+The original D3 dataset is not fabricated inside this package. The included five-item `data/ood_demo.jsonl` is a smoke-test demonstration only, not a statistical benchmark.
+
+
+## v0.3.5 steering tuning
+
+Capture/extract one tool-policy vector per candidate layer, then sweep layer and
+alpha on a frozen validation split:
+
+```bash
+python scripts/tune_steering.py \
+  --model Qwen/Qwen2.5-3B-Instruct \
+  --val-tasks data/router_val.jsonl \
+  --label-field gold_route \
+  --vector-pattern 'vectors/tool_layer_{layer}.npz' \
+  --layers 20 24 28 32 \
+  --alphas 0.5 1.0 1.5 2.0 2.5 \
+  --prompt-format chat \
+  --output results/steering_sweep.json
+```
+
+The sweep optimizes coverage-adjusted route F1, then decision coverage, then
+route accuracy. Final test data must remain untouched until the configuration is
+frozen.
+
+
+## v0.3.5 direct-logit routing
+
+`steered_auto` now supports one-pass route decisions:
+
+```bash
+python scripts/generate_v0_outputs.py \
+  --model Qwen/Qwen2.5-3B-Instruct \
+  --input data/router_val.jsonl \
+  --output data/v0_outputs/steered.jsonl \
+  --routes-output data/v0_outputs/steered.routes.jsonl \
+  --execution-mode steered_auto \
+  --tool-steering-vector vectors/tool_layer_24.npz \
+  --route-decision-mode auto \
+  --prompt-format chat
+```
+
+`auto` uses direct logit contrast when `SYMBOLIC` and `LLM` each resolve to one
+next-token ID for the tokenizer and falls back to autoregressive routing
+otherwise. `logit` makes the single-token requirement strict.
+
+Batched tuning:
+
+```bash
+python scripts/tune_steering.py \
+  --model Qwen/Qwen2.5-3B-Instruct \
+  --val-tasks data/router_val.jsonl \
+  --label-field route_label \
+  --vector-pattern 'vectors/tool_layer_{layer}.npz' \
+  --layers 20 24 28 32 \
+  --alphas 0.5 1.0 1.5 2.0 \
+  --batch-size 32 \
+  --prompt-format chat \
+  --output results/steering_sweep.json
+```
+
+Generate a frozen OOD benchmark:
+
+```bash
+python scripts/generate_ood_benchmark.py \
+  --output data/ood_v034_seed42.jsonl \
+  --num-tasks 500 \
+  --seed 42
+```
+
+The generator prints the resulting SHA-256 digest. Freeze the file after
+generation and do not tune on the final test split.
+
+
+## v0.3.5 composite steering and batched generation
+
+A multi-layer steering bundle can be passed directly:
+
+```bash
+python scripts/generate_v0_outputs.py \
+  --model Qwen/Qwen2.5-3B-Instruct \
+  --input data/ood_v035.jsonl \
+  --output data/v0_outputs/full.jsonl \
+  --routes-output data/v0_outputs/full.routes.jsonl \
+  --execution-mode steered_auto \
+  --tool-steering-vectors 'vectors/tool_l20.npz,vectors/tool_l24.npz' \
+  --reasoning-steering-vectors configs/reasoning_bundle.json \
+  --batch-size 16 \
+  --route-batch-size 32 \
+  --route-decision-mode auto \
+  --prompt-format chat
+```
+
+Bundle JSON may contain paths only or per-vector alpha overrides:
+
+```json
+{
+  "vectors": [
+    {"path": "../vectors/tool_l20.npz", "alpha": 0.7},
+    {"path": "../vectors/tool_l24.npz", "alpha": 1.1}
+  ]
+}
+```
+
+Composite tuning uses the stored per-layer alpha values and interprets each
+`--alphas` value as a global multiplier:
+
+```bash
+python scripts/tune_steering.py \
+  --model Qwen/Qwen2.5-3B-Instruct \
+  --val-tasks data/router_val.jsonl \
+  --label-field route_label \
+  --vector-bundle configs/tool_bundle.json \
+  --alphas 0.5 0.75 1.0 1.25 1.5 \
+  --batch-size 32 \
+  --output results/composite_sweep.json
+```
+
+The paired V0 gate now reports the exact paired-binomial p-value, continuity-
+corrected McNemar statistic/p-value, discordant odds ratio, and exact 95%
+Clopper-Pearson intervals.

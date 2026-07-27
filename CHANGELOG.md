@@ -1,0 +1,270 @@
+# 0.3.5 (manifest + claims patch)
+
+- Added `CLAIMS.md` pinning down what each term used in the repository is
+  currently licensed to assert (AutoLearn, OOD benchmark, gold route labels,
+  steering improves routing, reasoning steering, test count, latency,
+  provenance, tokenizer portability). Each entry carries an
+  `ESTABLISHED` / `BOOTSTRAP` / `NOT YET` / `OUT OF SCOPE` status tag.
+- Added `docs/RUN_MANIFEST.md` specifying the `daph.run.v1` run manifest
+  schema: model revision / config hash / dtype, tokenizer revision /
+  chat-template hash, environment (torch / transformers / CUDA / GPU),
+  dataset SHA-256 + split + `label_oracle_kind`, decoding (seed, prompt
+  format, `route_token_resolver`), per-vector provenance, and pytorch
+  determinism. Three-tier validation: REQUIRED, REQUIRED_FOR_HEADLINE,
+  OPTIONAL.
+- Added `src/daph_learning/evaluation/manifest.py` implementing the schema
+  with `build_manifest`, `validate` (with `headline=True` tier),
+  `serialize`, `manifest_sha256`, `write_manifest` / `load_manifest`,
+  `hash_file`, `hash_vector_values`. Exposed via
+  `daph_learning.evaluation.__init__`.
+- Added programmatic anti-circularity guard: a manifest whose
+  `dataset.split` is `test`/`final_test` and whose vector's
+  `capture_dataset_sha256` equals the manifest's own `dataset.sha256` is
+  rejected as a split-leakage violation.
+- Added token-resolver honesty field: `decoding.route_token_resolver`
+  must be `isolated` (what v0.3.5 actually does) or `contextual` (not yet
+  implemented). Setting `contextual` without the implementation is a
+  validation error.
+- Extended `SteeringSpec` with capture provenance fields:
+  `extraction_method`, `normalization`, `positive_n`, `negative_n`,
+  `capture_anchor`, `capture_prompt_format`, `capture_dataset_path`,
+  `capture_dataset_sha256`. All default to `None` for backward
+  compatibility; older `.npz` files still load. Headline manifest
+  validation flags vectors missing these fields.
+- Updated `contrastive_mean_direction` to honor `spec.normalization`
+  (`"l2"` / `"none"` / `"mean_centered"`) when the explicit `normalize`
+  argument is `None`. Backward-compatible default remains `True` (L2).
+- Updated `extract_steering_vector.py` with `--extraction-method`,
+  `--normalization`, `--positive-n`, `--negative-n`, `--capture-anchor`,
+  `--capture-prompt-format`, `--capture-dataset-path`,
+  `--capture-dataset-sha256` flags. `--positive-n` / `--negative-n`
+  auto-fill from array shapes when omitted.
+- Updated `capture_router_activations.py` to compute and emit the capture
+  dataset SHA-256, positive/negative sample counts, capture anchor, and
+  capture prompt format in its JSON summary, plus a ready-to-paste
+  `extract_command` with all provenance flags filled in.
+- Added `scripts/_manifest.py` shared helper for best-effort environment
+  detection (python / torch / transformers / CUDA / GPU / git commit /
+  dirty), vector-entry construction reading provenance from `SteeringSpec`
+  with `vector_sha256`, and manifest emission as a
+  `<output>.manifest.json` sibling file.
+- Wired manifest emission into `generate_v0_outputs.py`,
+  `tune_steering.py`, and `evaluate_routes.py`. Each now accepts
+  `--dataset-split`, `--label-field`, `--label-oracle-kind`,
+  `--run-id`, and `--no-manifest` flags. Manifest validation failures
+  print a warning naming the missing fields but do not invalidate the
+  output file itself.
+- `_load_vector_cli` now returns `(vectors, source_paths)` so the
+  manifest can cite the on-disk vector files.
+- Added 25 schema tests (`tests/test_manifest.py`), 6 emission
+  integration tests (`tests/test_manifest_emission.py`), 11
+  provenance roundtrip tests (`tests/test_steering_provenance.py`),
+  22 OOD benchmark tests (`tests/test_ood_benchmark_v035.py`),
+  14 real-model integration tests
+  (`tests/test_real_model_integration.py`),
+  10 contextual token resolver tests
+  (`tests/test_contextual_token_resolver.py`),
+  8 activation telemetry tests (`tests/test_activation_telemetry.py`),
+  8 latency measurement tests (`tests/test_latency_measurement.py`),
+  5 alpha-grid tests (`tests/test_alpha_grid.py`),
+  10 linear-probe baseline tests
+  (`tests/test_linear_probe_baseline.py`), 6 random-direction
+  control tests (`tests/test_random_direction_control.py`), and
+  20 AutoLearn loop tests (`tests/test_autolearn_loop.py`).
+
+# 0.3.5 (AutoLearn learning loop)
+
+- Added `src/daph_learning/autolearn/` module implementing the iterative
+  learning loop that gives the project its name. The loop:
+  1. Routes training tasks with the current steering vector.
+  2. Executes the chosen backend (symbolic or LLM).
+  3. Classifies outcomes as correct / misrouted / unverifiable using
+     `classify_outcome()`.
+  4. Captures activations from correctly-routed (positive) and
+     misrouted (negative) tasks.
+  5. Updates the steering vector via contrastive mean difference.
+  6. Evaluates on the validation set.
+  7. Repeats for N iterations, tracking the best vector by validation F1.
+  Early-stops when no update is possible (not enough examples).
+  See CLAIMS.md §18.
+- Added `scripts/autolearn.py` CLI driver with `--train-tasks`,
+  `--val-tasks`, `--model`, `--layer`, `--n-iterations`, `--alpha`,
+  `--anchor`, `--min-examples`, `--normalization`, `--seed`,
+  `--prompt-format`, `--label-field`, `--label-oracle-kind`,
+  `--output`, and `--vector-output` flags. Prints the learning curve
+  (iteration, train accuracy, val F1, val accuracy, updated flag,
+  vector norm) and saves the best vector to .npz.
+- Added `classify_outcome()` function that determines whether a routed
+  task execution was correct, misrouted, or unverifiable, using the
+  expected answer and the output format. This is the core feedback
+  signal for the learning loop.
+- Ran the full experiment suite on Qwen2.5-1.5B-Instruct (28 layers,
+  hidden_size=1536, MPS backend). Results on 50-task test set:
+  - Baseline (no steering): 70% acc, 0% F1
+  - Extract-once steering (layer=20, alpha=3.0, norm='none'):
+    90% acc, 62% F1 — **steering causally improves routing**
+  - Random-direction control: F1=0.05 ± 0.07, z=8.6
+    (`real_vector_outperforms`) — the direction matters, not just
+    magnitude
+  - Linear probe: 100% CV accuracy — activations perfectly separate
+    symbolic/LLM, but probe weights as steering direction produce
+    F1=0.0 (classification ≠ causal intervention)
+  - AutoLearn loop: did not update (logit routing fails for Qwen's
+    multi-token tokenizer; needs generate-mode support)
+  - Key finding: `normalization='none'` is critical — L2-normalized
+    vectors (norm=1) have no effect because the residual stream norm
+    is ~71. The raw mean difference (norm~15) at alpha=3.0 produces
+    a perturbation that is ~60% of the residual stream norm.
+
+# 0.3.5 (alpha-grid + linear-probe baseline + random-direction control)
+
+- Added `--alpha-grid` to `tune_steering.py` for independent per-vector
+  composite coefficient sweeping. Each grid entry is a comma-separated
+  list of alphas, one per vector in the bundle. Example:
+  `--alpha-grid 0.5,1.0 1.0,2.0` sweeps two configurations with
+  independent per-vector alphas. Mutually exclusive with `--alphas`.
+  Results record `scale_semantics: "independent_per_vector"`. See
+  CLAIMS.md §10 and audit §10.
+- Added `scripts/linear_probe_baseline.py`: trains a logistic regression
+  on captured router activations to predict the symbolic/llm route label
+  via 5-fold stratified cross-validation. Reports accuracy, precision,
+  recall, F1, confusion matrix, majority-class baseline, and lift over
+  baseline. Provides the steering-free upper bound required by audit §9
+  for evaluating whether steering contributes beyond what a simple linear
+  classifier on the same activations could do.
+- Added `scripts/random_direction_control.py`: matched-norm
+  random-direction control experiment. Generates N random directions
+  with the same L2 norm as the real steering vector, runs the routing
+  pipeline with each, and compares metrics. Reports `f1_lift` and
+  `f1_z_score` with an interpretation tag
+  (`real_vector_outperforms` / `within_random_range` / `underperforms`).
+  This is the causal ablation required by audit §11: if random
+  directions produce the same routing change, the steering vector's
+  direction is not causally responsible.
+
+- Added `resolve_route_token_ids_contextual` to
+  `daph_learning.routing.steered_router`. Derives route-label token IDs
+  by diffing `T(rendered_prompt + label)` against `T(rendered_prompt)`,
+  eliminating the boundary assumption that fails for some BPE/SentencePiece
+  tokenizers. See CLAIMS.md §9 and audit §7.
+- Added `token_resolver` parameter to `score_route_batch_from_logits`
+  (`"isolated"` default for backward compat, `"contextual"` for
+  headline-eligible results). Wired through `generate_v0_outputs.py`
+  and `tune_steering.py` via `--route-token-resolver` CLI flag.
+- Added activation telemetry to `residual_addition_hook` and
+  `multi_layer_residual_addition_hook`. When a `telemetry_sink` list is
+  provided, the hook appends per-forward-pass stats: `layer_index`,
+  `n_steered_positions`, `h_norm_mean`, `av_norm_mean`,
+  `relative_perturbation` (`|αv|/|h|`), and `cosine_shift_mean`
+  (`1 - cos(h, h+αv)`). Wired through `score_route_batch_from_logits`
+  and `_generate_batch`. See CLAIMS.md §20 and audit §20.
+- Added per-stage latency measurement to `generate_v0_outputs.py`.
+  Route records now include `route_batch_ms`, `symbolic_exec_ms`, and
+  `answer_batch_ms` in addition to the existing `pipeline_elapsed_ms`.
+  Skipped stages report 0.0. See CLAIMS.md §22 and audit §22.
+
+# 0.3.5 (OOD benchmark + typed oracle labels + real-model tests)
+
+- Expanded `generate_ood_benchmark.py` from 5 to 13 categories. Added
+  `nested_arithmetic`, `signed_nested_arithmetic` (symbolic group);
+  `text_question`, `coding_question`, `knowledge_question`
+  (non-symbolic controls); `irrelevant_numeric`, `ambiguous_tool`
+  (adversarial numeric controls); `unsupported_arithmetic` (malformed,
+  uses true division to test fallback). Each task carries a
+  `category_group` field (`symbolic` / `non_symbolic` / `adversarial` /
+  `malformed`) for aggregate analysis. Added `--symbolic-only`,
+  `--non-symbolic-only`, and `--categories` CLI flags for generating
+  targeted subsets.
+- Added typed oracle labels: every task now carries
+  `capability_oracle`, `accuracy_oracle`, and `utility_oracle` fields
+  (each `"symbolic"` or `"llm"`), in addition to the backward-compatible
+  `route_label` (which equals `utility_oracle`). This fixes the
+  three-oracles-conflated-into-one-string problem from the audit §13.
+  For example, `easy_add` now has `capability_oracle="symbolic"` (the
+  tool can do it), `accuracy_oracle="llm"` (the LLM is more accurate on
+  small numbers), `utility_oracle="llm"` (prefer LLM for this category).
+- Updated `evaluate_route_records` to accept `label_oracle_kind` and
+  include it in the returned metrics dict, so downstream consumers
+  cannot silently re-interpret a `policy_heuristic` result as a
+  capability oracle.
+- Updated `tune_steering.py` to pass `label_oracle_kind` through to
+  `evaluate_route_records`.
+- Added real-model integration tests
+  (`tests/test_real_model_integration.py`) using `sshleifer/tiny-gpt2`.
+  Covers: layer resolution, vector validation, anchor mapping, activation
+  capture, multi-layer hooks, batched generation, batch-size consistency
+  (the §24 check: same prompt produces same output in batch size 1 vs
+  batch), symbolic execution, symbolic→LLM fallback, extract/load
+  roundtrip with provenance, chat-template guard. Skipped if torch or
+  transformers is unavailable.
+
+# 0.3.5
+
+- Auto-detects leading-space vs raw single-token route labels for direct-logit routing.
+- Added comma-separated and JSON multi-layer steering bundle loading with duplicate-layer validation.
+- Added composite tool-policy and reasoning-policy steering CLI support in full output generation.
+- Refactored full output generation into batched model-mediated routing and batched answer-generation stages.
+- Added configurable `--batch-size` and `--route-batch-size`.
+- Added composite bundle tuning; bundle sweep alpha acts as a global multiplier over stored per-layer alphas.
+- Added McNemar continuity-corrected statistic/p-value, discordant odds ratio, and exact Clopper-Pearson confidence intervals.
+- Extended V0 hint-ablation gate JSON telemetry with paired-effect confidence intervals.
+
+# 0.3.4
+
+- Added direct next-token logit-contrast routing with explicit single-token label validation.
+- Added `route-decision-mode={auto,logit,generate}` and route margin/method telemetry.
+- Added batch-aware anchor steering for variable-length left-padded prompt batches.
+- Added multi-layer composite residual steering context manager.
+- Refactored steering tuning to batched single-forward logit scoring with configurable batch size and margin threshold.
+- Added deterministic, balanced, seed-controlled OOD benchmark generation with SHA-256 output.
+- Added regression tests for logit routing, composite hooks, batch target indices, and benchmark determinism.
+
+# 0.3.3
+
+- Fixed malformed-route confusion accounting so malformed LLM-oracle decisions no longer inflate true negatives or specificity.
+- Added reusable `evaluate_route_records()` for route evaluation and steering tuning.
+- Added regex-based embedded `$var` discovery/substitution across nested symbolic DAG arguments.
+- Added explicit `target_token_index` support to residual steering and activation capture.
+- Added `find_anchor_token_index()` so `ACTION:` can be targeted inside fully rendered chat templates instead of steering the appended assistant-generation header.
+- Connected anchor-aligned capture and injection paths.
+- Added runtime alpha overrides for tool-policy and reasoning-policy steering.
+- Added real `scripts/tune_steering.py` layer/alpha validation sweep that loads the model once, runs steered routing, scores route metrics, and selects the best configuration.
+- Added v0.3.3 regression tests for TN accounting, embedded variables, target-token steering, anchor alignment, and tuning selection logic.
+
+# 0.3.2
+
+- Preserve retrieved procedural memory when symbolic execution fails over to the LLM.
+- Count malformed route decisions in the binary confusion matrix instead of silently skipping them; report malformed rate and route accuracy.
+- Make `token_scope="last"` a one-shot prompt-final-token intervention, protected against cached and non-cached autoregressive decode reapplication.
+- Isolate arithmetic text before trailing natural-language/numeric instructions.
+- Extend `ExecutionPlan` to multi-action dependency DAGs via `output_var`, `$var` references, topological scheduling, cycle detection, and optional `result_var`.
+- Add regression tests for all v0.3.2 repairs.
+
+# 0.3.1
+
+- Connected ExecutionPlan actions to actual symbolic dispatch; removed gold-answer leakage from runtime verification.
+- Added importable scripts package and fixed `inspect_integrity.py`.
+- Added `steered_auto`: tool-policy steering now causally participates in the LLM call/no-call routing pass.
+- Split tool-policy steering from reasoning-policy steering with family validation.
+- Added token-scoped residual hooks (`last` for route action, `all` for reasoning experiments).
+- Added vector/model dimensional validation and richer steering metadata.
+- Added route evaluator, exact paired V0 hint-ablation gate, and contrastive steering-vector extraction CLI.
+- Corrected `scientific_gate` semantics: integrity/paired checks are separate from the new `effect_size_pass`.
+- Added optional explicit route-label fields for activation capture and routing evaluation to avoid circular policy-oracle evaluation.
+- Centralized output parsers under `daph_learning.evaluation`.
+- Added `mod` modulus alias and stronger task-schema/duplicate-ID validation.
+- Added raw/chat prompt-format switch to preserve historical compatibility while supporting instruct chat templates.
+- Added expanded integration/security tests and CLI smoke tests.
+
+# 0.3.0
+
+- Fixed procedural-memory loading path.
+- Replaced raw/symbolic eval assumptions with typed exact integer execution.
+- Added bounded AST fallback.
+- Added explicit capability assessment and routing decision objects.
+- Added ExecutionPlan / SymbolicAction / ExecutionResult IR.
+- Added auditable route logging.
+- Added deterministic symbolic, auto, and hybrid execution modes.
+- Added stable `FINAL:` scoring contract.
+- Added activation steering vector types, extraction, residual hooks, and serialization.
+- Added integrity, memory, router, scorer, and symbolic-security tests.

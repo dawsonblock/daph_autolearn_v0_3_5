@@ -1,0 +1,158 @@
+{
+  "model": "Qwen/Qwen2.5-1.5B-Instruct",
+  "layer": 20,
+  "alpha": 3.0,
+  "anchor": "ACTION:",
+  "normalization": "none",
+  "prompt_format": "chat",
+  "n_train": 100,
+  "n_val": 50,
+  "n_test": 50,
+  "baseline_no_steering": {
+    "accuracy": 0.7,
+    "precision": 0.0,
+    "recall": 0.0,
+    "f1": 0.0,
+    "confusion_matrix": {
+      "tp": 0,
+      "fp": 7,
+      "fn": 8,
+      "tn": 35
+    },
+    "n": 50
+  },
+  "extract_once": {
+    "accuracy": 0.9,
+    "precision": 0.8,
+    "recall": 0.5,
+    "f1": 0.6153846153846154,
+    "confusion_matrix": {
+      "tp": 4,
+      "fp": 1,
+      "fn": 4,
+      "tn": 41
+    },
+    "n": 50
+  },
+  "autolearn": {
+    "best_iteration": 0,
+    "best_val_f1": 0.36363636363636365,
+    "test_metrics": {
+      "accuracy": 0.9,
+      "precision": 0.8,
+      "recall": 0.5,
+      "f1": 0.6153846153846154,
+      "confusion_matrix": {
+        "tp": 4,
+        "fp": 1,
+        "fn": 4,
+        "tn": 41
+      },
+      "n": 50
+    },
+    "learning_curve": [
+      {
+        "iteration": 0,
+        "train_accuracy": 0.58,
+        "val_f1": 0.36363636363636365,
+        "n_correct": 58,
+        "n_misrouted": 0,
+        "updated": false,
+        "vector_norm": 14.629778861999512
+      },
+      {
+        "iteration": 1,
+        "train_accuracy": 0.58,
+        "val_f1": 0.36363636363636365,
+        "n_correct": 58,
+        "n_misrouted": 0,
+        "updated": false,
+        "vector_norm": 14.629778861999512
+      }
+    ]
+  },
+  "linear_probe": {
+    "accuracy": 1.0,
+    "accuracy_std": 0.0,
+    "precision": 1.0,
+    "recall": 1.0,
+    "f1": 1.0,
+    "confusion_matrix": [
+      [
+        83,
+        0
+      ],
+      [
+        0,
+        17
+      ]
+    ],
+    "n_samples": 100,
+    "n_positive": 17,
+    "n_negative": 83,
+    "n_features": 1536,
+    "n_splits": 5,
+    "random_baseline": 0.83,
+    "lift_over_baseline": 0.17000000000000004
+  },
+  "random_direction_control": {
+    "n_random": 5,
+    "random_f1_mean": 0.05333333333333333,
+    "random_f1_std": 0.06531972647421809,
+    "extract_once_f1": 0.6153846153846154,
+    "f1_lift": 0.5620512820512821,
+    "f1_z_score": 8.604617814392189,
+    "interpretation": "real_vector_outperforms",
+    "random_f1s": [
+      0.0,
+      0.13333333333333333,
+      0.13333333333333333,
+      0.0,
+      0.0
+    ]
+  },
+  "probe_based_steering": {
+    "test_metrics": {
+      "accuracy": 0.84,
+      "precision": 0.0,
+      "recall": 0.0,
+      "f1": 0.0,
+      "confusion_matrix": {
+        "tp": 0,
+        "fp": 0,
+        "fn": 8,
+        "tn": 42
+      },
+      "n": 50
+    },
+    "best_alpha": 3.0,
+    "best_f1": 0.0,
+    "probe_direction_norm": 1.1966595649719238,
+    "extract_once_norm": 14.629778861999512
+  },
+  "steering_optimized": {
+    "test_metrics": {
+      "accuracy": 0.16,
+      "precision": 0.16,
+      "recall": 1.0,
+      "f1": 0.2758620689655173,
+      "confusion_matrix": {
+        "tp": 8,
+        "fp": 42,
+        "fn": 0,
+        "tn": 0
+      },
+      "n": 50
+    },
+    "optimization_info": {
+      "initial_margin": -1.2921875,
+      "final_margin": 48.68125,
+      "margin_improvement": 49.973437499999996,
+      "n_iterations": 5,
+      "initial_norm": 14.629778861999512,
+      "final_norm": 29.8537654876709,
+      "n_prompts": 10,
+      "method": "coordinate"
+    }
+  }
+}

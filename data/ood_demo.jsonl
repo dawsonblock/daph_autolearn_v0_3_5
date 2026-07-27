@@ -1,0 +1,5 @@
+{"task_id": "ood-1", "capability_ids": ["integer_arithmetic"], "inputs": {"a": 45938, "b": 92847, "op": "+"}, "specification": "Compute 45938 + 92847. Return only the integer.", "expected": 138785, "route_label": "llm"}
+{"task_id": "ood-2", "capability_ids": ["integer_arithmetic"], "inputs": {"a": 345, "b": 821, "op": "*"}, "specification": "Compute 345 * 821. Return only the integer.", "expected": 283245, "route_label": "symbolic"}
+{"task_id": "ood-3", "capability_ids": ["integer_arithmetic"], "inputs": {}, "specification": "Compute (125 + 43) * 11. Return only the integer.", "expected": 1848, "route_label": "symbolic"}
+{"task_id": "ood-4", "capability_ids": ["integer_arithmetic"], "inputs": {"a": 10582, "b": 29384, "op": "-"}, "specification": "Compute 10582 - 29384. Return only the integer.", "expected": -18802, "route_label": "llm"}
+{"task_id": "ood-5", "capability_ids": ["integer_arithmetic"], "inputs": {"a": 4829, "b": 392, "op": "*"}, "specification": "Compute 4829 * 392. Return only the integer.", "expected": 1892968, "route_label": "symbolic"}

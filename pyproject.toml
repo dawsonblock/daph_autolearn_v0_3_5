@@ -1,0 +1,37 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "daph-autolearn"
+version = "0.3.5"
+description = "DAPH AutoLearn corrected V0 symbolic-routing and activation-steering research scaffold"
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = ["numpy>=1.24", "packaging>=23"]
+
+[project.optional-dependencies]
+llm = [
+  "torch>=2.1",
+  "transformers>=4.45",
+  "accelerate>=0.21",
+  "safetensors>=0.4",
+]
+test = ["pytest>=8.0"]
+full = [
+  "torch>=2.1",
+  "transformers>=4.45",
+  "accelerate>=0.21",
+  "safetensors>=0.4",
+  "pytest>=8.0",
+]
+
+[tool.setuptools]
+package-dir = {"" = "src"}
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-q"
