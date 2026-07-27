@@ -29,6 +29,67 @@ def batches(items, size, rng):
         yield items[i : i + size]
 
 
+def split_train_validation(data, holdout_fraction, seed):
+    """Deterministically split a list of training examples into (train, val).
+
+    Uses a seeded shuffle so the same dataset + seed always yields the same
+    holdout. Falls back to (data, []) when the holdout would be empty or the
+    training set is too small to hold out (fewer than 4 examples).
+    """
+    n = len(data)
+    if holdout_fraction <= 0 or n < 4:
+        return list(data), []
+    n_val = max(1, int(round(n * holdout_fraction)))
+    if n_val >= n:
+        n_val = max(1, n // 4)
+    idx = list(range(n))
+    rng = random.Random(seed)
+    rng.shuffle(idx)
+    val_idx = set(idx[:n_val])
+    val = [data[i] for i in range(n) if i in val_idx]
+    train = [data[i] for i in range(n) if i not in val_idx]
+    return train, val
+
+
+@torch.no_grad()
+def evaluate_validation(encoder, constant, injector, model, tokenizer, val_data,
+                        device, mem, tcfg):
+    """Compute held-out validation answer loss for the process-latent path.
+
+    The selection criterion is the mean LM answer loss on the held-out validation
+    examples with latent injection (forward pass only, eval mode). This measures
+    whether the encoder produces latents that help the frozen model predict the
+    answer on unseen examples, rather than rewarding memorization of the training
+    distribution. Alignment loss is a training-time regularizer toward the
+    teacher and is NOT used for selection.
+    """
+    if not val_data:
+        return None
+    encoder.eval()
+    constant.eval()
+    rng = random.Random(tcfg.get("val_seed", 0) + 7919)
+    losses = []
+    for chunk in batches(val_data, tcfg["batch_size"], rng):
+        p, s, a = tokenize_batch(
+            chunk, tokenizer, tcfg["max_prompt_tokens"], tcfg["max_answer_tokens"]
+        )
+        p = {k: v.to(device) for k, v in p.items()}
+        s = {k: v.to(device) for k, v in s.items()}
+        a = {k: v.to(device) for k, v in a.items()}
+        latents = encoder(s["input_ids"], s["attention_mask"])
+        injected = injector.build(
+            p["input_ids"], p["attention_mask"], a["input_ids"], a["attention_mask"], latents
+        )
+        out = model(
+            inputs_embeds=injected.inputs_embeds,
+            attention_mask=injected.attention_mask,
+            labels=injected.labels,
+            use_cache=False,
+        )
+        losses.append(float(out.loss.detach().cpu()))
+    return sum(losses) / max(1, len(losses))
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--config", required=True)
@@ -65,13 +126,24 @@ def main():
         weight_decay=cfg["training"]["weight_decay"],
     )
 
-    data = [x for x in load_jsonl(args.dataset) if x.split == "train"]
-    if not data:
+    all_train = [x for x in load_jsonl(args.dataset) if x.split == "train"]
+    if not all_train:
         raise ValueError("Dataset contains no training examples")
 
     tcfg = cfg["training"]
+    val_fraction = float(tcfg.get("val_holdout_fraction", 0.15))
+    val_seed = int(tcfg.get("val_seed", cfg["seed"]))
+    selection_metric = str(tcfg.get("selection_metric", "val_loss"))
+    data, val_data = split_train_validation(all_train, val_fraction, val_seed)
+    if selection_metric == "val_loss" and not val_data:
+        # Holdout was too small to carve; fall back to training-loss selection
+        # so the run still completes, but warn loudly.
+        print("WARNING: validation holdout is empty; falling back to train_loss selection.")
+        selection_metric = "train_loss"
+
     grad_acc = int(tcfg["grad_accum_steps"])
     best = math.inf
+    best_epoch = None
     global_step = 0
     history = []
 
@@ -167,9 +239,24 @@ def main():
 
         epoch_process = sum(running_process) / max(1, len(running_process))
         epoch_constant = sum(running_constant) / max(1, len(running_constant))
-        selection_loss = epoch_process
+        epoch_val = evaluate_validation(
+            encoder, constant, injector, model, tokenizer, val_data,
+            device, mem, {**tcfg, "val_seed": val_seed},
+        )
+
+        if selection_metric == "val_loss" and epoch_val is not None:
+            selection_loss = epoch_val
+        else:
+            selection_loss = epoch_process
+
         history.append(
-            {"epoch": epoch + 1, "process_loss": epoch_process, "constant_loss": epoch_constant}
+            {
+                "epoch": epoch + 1,
+                "process_loss": epoch_process,
+                "constant_loss": epoch_constant,
+                "val_loss": epoch_val,
+                "selection_metric": selection_metric,
+            }
         )
         meta = {
             "version": "0.5.1",
@@ -178,15 +265,20 @@ def main():
             "config": cfg,
             "history": history,
             "global_step": global_step,
+            "val_holdout_fraction": val_fraction,
+            "val_size": len(val_data),
+            "train_size": len(data),
+            "selection_metric": selection_metric,
             "note": "Base transformer frozen; process encoder and constant baseline trained.",
         }
         save_checkpoint(outdir / "last.pt", encoder, opt, meta, constant=constant)
         if selection_loss < best:
             best = selection_loss
+            best_epoch = epoch + 1
             save_checkpoint(outdir / "best.pt", encoder, opt, meta, constant=constant)
         print(json.dumps(history[-1], indent=2))
 
-    print("best process training loss:", best)
+    print(f"best {selection_metric}:", best, "at epoch", best_epoch)
     print("checkpoint:", outdir / "best.pt")
 
 

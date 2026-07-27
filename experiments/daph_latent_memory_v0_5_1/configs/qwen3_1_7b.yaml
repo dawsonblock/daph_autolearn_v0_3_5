@@ -22,6 +22,13 @@ training:
   max_answer_tokens: 48
   teacher_layer_fraction: 0.75
   gradient_clip: 1.0
+  # Held-out validation carved deterministically from the train split.
+  # best.pt is selected by validation answer loss (not training loss) so the
+  # encoder cannot win checkpoint selection by memorizing the training
+  # distribution. Set selection_metric to "train_loss" only for ablation.
+  val_holdout_fraction: 0.15
+  val_seed: 1337
+  selection_metric: "val_loss"
 evaluation:
   bootstrap_samples: 1000
   leakage_max_accuracy: 0.75
