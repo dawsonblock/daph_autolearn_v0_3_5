@@ -119,7 +119,9 @@ def _cuda_info() -> tuple[str | None, str | None, str | None, str | None]:
 
     cuda_version = torch.version.cuda
     try:
-        cuda_driver_version = str(torch.cuda.get_device_properties(0).name)
+        cuda_driver_version = torch.cuda.get_driver_version()
+        if cuda_driver_version is not None:
+            cuda_driver_version = str(cuda_driver_version)
     except (RuntimeError, IndexError, AttributeError):
         cuda_driver_version = None
 

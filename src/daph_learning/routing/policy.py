@@ -193,6 +193,33 @@ def baseline_router(
 # --- Steered (model-mediated) router ---
 
 
+def _generate_route(
+    model: Any,
+    tokenizer: Any,
+    encoded: dict[str, Any],
+    valid_targets: frozenset[str],
+) -> RouteTarget:
+    """Generate a few tokens and parse the route action from the output.
+
+    Used as the fallback when direct-logit routing fails (multi-token
+    labels, context-boundary issues). Returns the parsed route action
+    or ``"llm"`` if parsing fails.
+    """
+    gen_out = model.generate(
+        **encoded,
+        max_new_tokens=5,
+        do_sample=False,
+        pad_token_id=getattr(tokenizer, "pad_token_id", None),
+        use_cache=True,
+    )
+    generated = tokenizer.decode(
+        gen_out[0][encoded["input_ids"].shape[1]:],
+        skip_special_tokens=True,
+    ).strip()
+    action = parse_route_action(generated)
+    return action if action in valid_targets else "llm"  # type: ignore[return-value]
+
+
 def steered_router(
     tasks: Sequence[Mapping[str, Any]],
     model: Any,
@@ -277,6 +304,7 @@ def steered_router(
                 action, margin = route_action_from_logits(logits, sym_id, llm_id)
                 route = action  # type: ignore[assignment]
                 raw_scores = {"symbolic": float(margin), "llm": 0.0}
+                confidence = 1.0 / (1.0 + abs(float(margin)))
             except MultiTokenRouteError:
                 # Expected: label tokenizes to >1 token. Fall back to generate
                 # mode with structured telemetry.
@@ -287,19 +315,7 @@ def steered_router(
                     reason="multi_token_label",
                     task_id=task_id,
                 )
-                gen_out = model.generate(
-                    **encoded,
-                    max_new_tokens=5,
-                    do_sample=False,
-                    pad_token_id=getattr(tokenizer, "pad_token_id", None),
-                    use_cache=True,
-                )
-                generated = tokenizer.decode(
-                    gen_out[0][encoded["input_ids"].shape[1]:],
-                    skip_special_tokens=True,
-                ).strip()
-                action = parse_route_action(generated)
-                route = action if action in _VALID_ROUTE_TARGETS else "llm"  # type: ignore[assignment]
+                route = _generate_route(model, tokenizer, encoded, _VALID_ROUTE_TARGETS)
             except RouteResolutionError as exc:
                 # Expected: context-boundary or other route-resolution issue.
                 emit_fallback(
@@ -310,19 +326,7 @@ def steered_router(
                     task_id=task_id,
                     detail=str(exc),
                 )
-                gen_out = model.generate(
-                    **encoded,
-                    max_new_tokens=5,
-                    do_sample=False,
-                    pad_token_id=getattr(tokenizer, "pad_token_id", None),
-                    use_cache=True,
-                )
-                generated = tokenizer.decode(
-                    gen_out[0][encoded["input_ids"].shape[1]:],
-                    skip_special_tokens=True,
-                ).strip()
-                action = parse_route_action(generated)
-                route = action if action in _VALID_ROUTE_TARGETS else "llm"  # type: ignore[assignment]
+                route = _generate_route(model, tokenizer, encoded, _VALID_ROUTE_TARGETS)
         except SteeringApplicationError as exc:
             # Expected-ish: steering hook failed (layer index, shape mismatch).
             # Fall back to a conservative LLM default with telemetry.

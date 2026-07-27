@@ -236,7 +236,7 @@ def _capture_activations(
     for task in tasks:
         prompt = build_route_prompt(task)
         # Apply prompt formatting
-        if prompt_format == "chat" and tokenizer.chat_template is not None:
+        if prompt_format == "chat" and hasattr(tokenizer, "chat_template") and tokenizer.chat_template is not None:
             messages = [{"role": "user", "content": prompt}]
             rendered = tokenizer.apply_chat_template(messages, tokenize=False, add_generation_prompt=True)
         else:
@@ -556,7 +556,6 @@ def run_autolearn_loop(
     if eval_fn is None:
         eval_fn = evaluate_route_records
 
-    rng = np.random.RandomState(config.seed)
     current_vector = initial_vector
     iterations: list[IterationMetrics] = []
     best_vector = initial_vector
@@ -600,11 +599,10 @@ def run_autolearn_loop(
                 # v0.3.7: abstain is collapsed to "llm" for the execution
                 # stage because the v0.3.7 backend executor only knows how to
                 # run symbolic vs LLM. A real abstain backend arrives in v0.3.9
-                # (V039-003). The decision source is preserved in
-                # `route_raws` so downstream telemetry can distinguish
-                # abstain-from-custom vs llm-from-steered.
+                # (V039-003). No raw route text is available from a custom
+                # router, so route_raws is set to None.
                 routes[tid] = "llm" if decision.route == "abstain" else decision.route
-                route_raws[tid] = decision.source
+                route_raws[tid] = None
         elif current_vector is not None:
             if use_generate_mode:
                 # Use generate-mode steered routing (works with any tokenizer)

@@ -26,6 +26,11 @@ FALLBACK_EVENTS: list[dict[str, Any]] = []
 """In-process record of every emitted fallback event. Cleared by
 :func:`reset_fallback_events` (called automatically by the test fixture)."""
 
+_MAX_FALLBACK_EVENTS = 10_000
+"""Maximum number of events retained in ``FALLBACK_EVENTS``. Once the cap
+is reached, the oldest event is discarded (ring-buffer semantics). This
+prevents unbounded memory growth in long-running loops."""
+
 _sink: Callable[[dict[str, Any]], None] | None = None
 
 
@@ -77,6 +82,8 @@ def emit_fallback(
         "reason": reason,
     }
     payload.update(extra)
+    if len(FALLBACK_EVENTS) >= _MAX_FALLBACK_EVENTS:
+        FALLBACK_EVENTS.pop(0)
     FALLBACK_EVENTS.append(payload)
     if _sink is not None:
         _sink(payload)
