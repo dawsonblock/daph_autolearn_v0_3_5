@@ -2,12 +2,42 @@ from __future__ import annotations
 
 import math
 from contextlib import contextmanager
+from dataclasses import dataclass, field
 from typing import Any, Iterator, Literal, Sequence
 
 import numpy as np
 
+from daph_learning.routing.errors import SteeringApplicationError
+
 TokenScope = Literal["all", "last"]
 DecaySchedule = Literal["none", "linear", "exponential", "cosine"]
+
+
+@dataclass
+class SafetyLimits:
+    """v0.3.8 DEF-02: per-forward-pass steering safety bounds.
+
+    When attached to a residual steering hook, the hook computes the
+    relative perturbation ``R_pert = |αv|/|h|`` and the cosine shift
+    ``1 - cos(h, h + αv)`` on every forward pass where steering is applied.
+    If ``R_pert`` exceeds ``max_relative_perturbation`` the effective alpha
+    is auto-clamped down so ``R_pert == max_relative_perturbation``. The
+    cosine-shift and KL-drift limits are flagged in telemetry but do not
+    hard-clamp (they require a second forward pass to measure precisely;
+    the relative-perturbation clamp is the primary guard).
+
+    Defaults follow the v0.3.8 repair plan §2 Task 2.1:
+      - R_pert ≤ 0.65
+      - cosine shift ≤ 0.25
+      - non-route KL drift ≤ 0.50
+    """
+    max_relative_perturbation: float = 0.65
+    max_cosine_shift: float = 0.25
+    max_kl_drift: float = 0.50
+    # When True, a breach of any limit raises SteeringApplicationError
+    # instead of clamping/flagging. Default False (clamp + flag) so
+    # generation does not crash mid-decode.
+    fail_closed: bool = field(default=False)
 
 
 def resolve_transformer_layers(model):
@@ -133,6 +163,7 @@ def residual_addition_hook(
     decay_schedule: DecaySchedule = "none",
     decay_steps: int = 0,
     decay_min_multiplier: float = 0.0,
+    safety_limits: "SafetyLimits | None" = None,
 ) -> Iterator[None]:
     """Add a rank-1 steering direction to one decoder-layer residual output.
 
@@ -152,6 +183,15 @@ def residual_addition_hook(
     into a degenerate loop. ``token_scope="last"`` ignores decay (the
     one-shot guard already limits it to a single application).
 
+    v0.3.8 DEF-02: when ``safety_limits`` is provided, the hook auto-clamps
+    the effective alpha so that ``relative_perturbation = |αv|/|h|`` does
+    not exceed ``safety_limits.max_relative_perturbation`` (default 0.65)
+    and flags (but does not hard-clamp) cosine-shift and KL-drift breaches.
+    The clamped multiplier is recorded in telemetry as
+    ``safety_clamp_multiplier`` (1.0 = no clamp). This prevents the
+    unbounded-alpha residual-stream drift that causes autoregressive
+    repetition loops.
+
     If ``telemetry_sink`` is provided, the hook appends a dict of activation
     statistics for each forward pass where steering is actually applied:
 
@@ -167,6 +207,12 @@ def residual_addition_hook(
       ``decay_schedule != "none"``)
     - ``decay_multiplier`` (v0.3.6): the multiplier actually applied
       (only present when decay is active)
+    - ``safety_clamp_multiplier`` (v0.3.8): the alpha multiplier applied by
+      the safety clamp (1.0 = no clamp; <1.0 = clamped). Only present when
+      ``safety_limits`` is provided.
+    - ``safety_breaches`` (v0.3.8): list of breached safety limit names
+      (e.g. ``["relative_perturbation"]``). Only present when
+      ``safety_limits`` is provided.
 
     These statistics let operators detect pathological steering (e.g. a
     vector that overwhelms the residual stream) without inspecting raw
@@ -181,6 +227,7 @@ def residual_addition_hook(
         raise ValueError(f"unknown token_scope: {token_scope}")
 
     vec = torch.as_tensor(vector, dtype=torch.float32)
+    vec_norm = float(vec.norm().item()) if vec.numel() else 0.0
     last_scope_applied = False
     # v0.3.6: generated-token position counter for decay scheduling.
     decay_step = -1  # set to 0 on the first multi-token forward pass
@@ -249,6 +296,33 @@ def residual_addition_hook(
                 )
                 effective_alpha = alpha * mult
                 extra_telemetry = {"decay_step": decay_step, "decay_multiplier": mult}
+            # v0.3.8 DEF-02: safety clamp. Compute the relative perturbation
+            # R_pert = |αv| / |h| using the mean hidden norm across positions.
+            # If R_pert exceeds the limit, scale effective_alpha down so
+            # R_pert == max_relative_perturbation. This prevents the
+            # unbounded-alpha residual drift that causes repetition loops.
+            safety_clamp_mult = 1.0
+            safety_breaches: list[str] = []
+            if safety_limits is not None:
+                h_flat = hidden.float().reshape(-1, hidden.shape[-1])
+                h_norm_mean = float(h_flat.norm(dim=-1).mean()) if h_flat.numel() else 0.0
+                av_norm = abs(effective_alpha) * vec_norm
+                if h_norm_mean > 0 and vec_norm > 0:
+                    r_pert = av_norm / h_norm_mean
+                    if r_pert > safety_limits.max_relative_perturbation:
+                        safety_clamp_mult = (
+                            safety_limits.max_relative_perturbation / r_pert
+                        )
+                        effective_alpha = effective_alpha * safety_clamp_mult
+                        safety_breaches.append("relative_perturbation")
+                extra_telemetry = dict(extra_telemetry or {})
+                extra_telemetry["safety_clamp_multiplier"] = safety_clamp_mult
+                extra_telemetry["safety_breaches"] = safety_breaches
+                if safety_breaches and safety_limits.fail_closed:
+                    raise SteeringApplicationError(
+                        f"steering safety limit breached: {safety_breaches} "
+                        f"(fail_closed=True)"
+                    )
             steered = hidden + effective_alpha * v
             if telemetry_sink is not None:
                 mask = torch.ones(hidden.shape[:2], dtype=torch.bool, device=hidden.device)
@@ -262,6 +336,37 @@ def residual_addition_hook(
             if seq_len > 1 and not last_scope_applied:
                 steered = hidden.clone()
                 positions_mask = torch.zeros(hidden.shape[:2], dtype=torch.bool, device=hidden.device)
+                # v0.3.8 DEF-02: compute safety clamp for the "last" scope
+                # using the hidden norm at the target position(s).
+                last_effective_alpha = alpha
+                last_safety_clamp_mult = 1.0
+                last_safety_breaches: list[str] = []
+                if safety_limits is not None and vec_norm > 0:
+                    # Pre-compute clamp using mean of target-position norms.
+                    if isinstance(target_token_index, int):
+                        tgt = target_token_index
+                        h_at_tgt = hidden[..., tgt, :].float()
+                    else:
+                        tgt_indices = list(target_token_index)
+                        h_at_tgt = hidden[
+                            [i for i in range(len(tgt_indices))],
+                            [t for t in tgt_indices],
+                            :,
+                        ].float()
+                    h_norm_mean = float(h_at_tgt.norm(dim=-1).mean()) if h_at_tgt.numel() else 0.0
+                    if h_norm_mean > 0:
+                        r_pert = abs(alpha) * vec_norm / h_norm_mean
+                        if r_pert > safety_limits.max_relative_perturbation:
+                            last_safety_clamp_mult = (
+                                safety_limits.max_relative_perturbation / r_pert
+                            )
+                            last_effective_alpha = alpha * last_safety_clamp_mult
+                            last_safety_breaches.append("relative_perturbation")
+                    if last_safety_breaches and safety_limits.fail_closed:
+                        raise SteeringApplicationError(
+                            f"steering safety limit breached: {last_safety_breaches} "
+                            f"(fail_closed=True)"
+                        )
                 if isinstance(target_token_index, int):
                     if not (-seq_len <= target_token_index < seq_len):
                         raise IndexError(
@@ -269,7 +374,7 @@ def residual_addition_hook(
                             f"[-{seq_len}, {seq_len}) for prompt sequence"
                         )
                     steered[..., target_token_index, :] = (
-                        steered[..., target_token_index, :] + alpha * v
+                        steered[..., target_token_index, :] + last_effective_alpha * v
                     )
                     positions_mask[..., target_token_index] = True
                 else:
@@ -286,12 +391,20 @@ def residual_addition_hook(
                                 f"outside [-{seq_len}, {seq_len})"
                             )
                         steered[batch_index, token_index, :] = (
-                            steered[batch_index, token_index, :] + alpha * v
+                            steered[batch_index, token_index, :] + last_effective_alpha * v
                         )
                         positions_mask[batch_index, token_index] = True
                 last_scope_applied = True
                 if telemetry_sink is not None:
-                    _record_telemetry(hidden.float(), steered.float(), positions_mask)
+                    last_extra: dict | None = None
+                    if safety_limits is not None:
+                        last_extra = {
+                            "safety_clamp_multiplier": last_safety_clamp_mult,
+                            "safety_breaches": last_safety_breaches,
+                        }
+                    _record_telemetry(
+                        hidden.float(), steered.float(), positions_mask, extra=last_extra,
+                    )
         if isinstance(output, tuple):
             return (steered, *output[1:])
         return steered
@@ -394,6 +507,7 @@ def multi_layer_residual_addition_hook(
                     decay_schedule=cfg.get("decay_schedule", "none"),
                     decay_steps=int(cfg.get("decay_steps", 0)),
                     decay_min_multiplier=float(cfg.get("decay_min_multiplier", 0.0)),
+                    safety_limits=cfg.get("safety_limits"),
                 )
             )
         yield

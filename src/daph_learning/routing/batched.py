@@ -22,7 +22,10 @@ from typing import Any, Sequence
 
 from daph_learning.data.task_utils import format_for_model
 from daph_learning.routing.logit_router import score_route_batch_from_logits
-from daph_learning.routing.steered_router import build_route_prompt
+from daph_learning.routing.steered_router import (
+    build_route_prompt,
+    detect_route_prompt_alignment,
+)
 
 
 def as_task_map(rows: list[dict[str, Any]]) -> dict[str, dict[str, Any]]:
@@ -108,6 +111,12 @@ def evaluate_batch_steered_routes(
             format_for_model(build_route_prompt(task), tokenizer, prompt_format)
             for task in batch
         ]
+        # v0.3.8 Task 1.2: enforce canonical "ACTION:" + " LABEL" terminal
+        # boundary alignment across every batching entry point. Trims
+        # trailing whitespace after the ACTION: anchor so the contextual
+        # resolver sees a consistent tokenization boundary regardless of
+        # how the chat template / format_for_model padded the prompt.
+        rendered = [detect_route_prompt_alignment(p)[0] for p in rendered]
         scored = score_route_batch_from_logits(
             rendered,
             model,

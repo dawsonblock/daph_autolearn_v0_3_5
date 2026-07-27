@@ -1,5 +1,65 @@
 # 0.3.8 (AutoLearn v2 core)
 
+- **Engineering Repair & Remediation (DEF-01..DEF-05)**:
+    - **DEF-01 — full-sequence logit route scoring** (Phase 1 Task 1.1):
+      `src/daph_learning/routing/logit_router.py` gains
+      `score_route_batch_sequence_from_logits` which computes
+      `Score(Label|x) = sum_j log P(t_j | x, t_<j)` over the complete label
+      token sequence. This eliminates the single-token contrast failure on
+      multi-token BPE/SentencePiece tokenizers (e.g. Qwen2.5 `"SYMBOLIC"` →
+      `[" SY", "MBOL", "IC"]`) without autoregressive generation fallback.
+      New helpers `resolve_route_label_token_sequences` and
+      `route_action_from_sequence_scores` in `steered_router.py`. Two
+      teacher-forced forward passes (one per label) replace the single-token
+      contrast; cost is ~2x the single-token path. New test file
+      `tests/test_sequence_route_scoring.py` (11 tests).
+    - **Phase 1 Task 1.2 — prompt terminal boundary alignment enforcement**:
+      `detect_route_prompt_alignment()` is now applied across all batching
+      entry points in `src/daph_learning/routing/batched.py`, trimming
+      trailing prompt whitespace to guarantee a canonical `"ACTION:" + " LABEL"`
+      tokenization boundary regardless of chat-template padding.
+    - **DEF-02 — steering perturbation safety limits** (Phase 2 Task 2.1):
+      new `SafetyLimits` dataclass in `src/daph_learning/steering/hooks.py`
+      with defaults `R_pert ≤ 0.65`, `cosine_shift ≤ 0.25`, `KL_drift ≤ 0.50`.
+      `residual_addition_hook` and `multi_layer_residual_addition_hook`
+      auto-clamp the effective alpha so `|αv|/|h|` does not exceed
+      `max_relative_perturbation`, preventing the unbounded-alpha
+      residual-stream drift that causes autoregressive repetition loops.
+      Telemetry records `safety_clamp_multiplier` and `safety_breaches`;
+      `fail_closed=True` raises `SteeringApplicationError` on breach. New
+      test file `tests/test_steering_safety_limits.py` (7 tests).
+    - **Phase 2 Task 2.2 — mandatory cosine decay scheduling for reasoning
+      steering**: `scripts/generate_v0_outputs.py` now wires
+      `decay_schedule="cosine"` (default), `decay_steps=16`,
+      `decay_min_multiplier=0.1` into all reasoning-policy generation passes
+      via new CLI flags `--reasoning-decay-schedule`,
+      `--reasoning-decay-steps`, `--reasoning-decay-min-multiplier`, and
+      `--no-safety-clamp`. The decay attenuates `token_scope="all"` steering
+      over generated tokens so the intervention fades out instead of
+      pinning the model into a degenerate loop.
+    - **DEF-03 — latent memory v0.5.2 loss migration**: verified complete.
+      `experiments/daph_latent_memory_v0_5_2/src/daph_latent_memory/training/losses.py`
+      contains `functional_mismatch_loss` (hinge with margin `m`), `disentangle_loss`,
+      `invariance_loss`, `total_loss_v052`, and `compute_R`. The legacy
+      `hidden_alignment_loss` / cosine alignment loss is fully purged. Hard
+      negative sampling (`negatives.py`) covers 5 categories with K=3.
+      `test_losses.py` (10 tests) + `test_negatives.py` (4 tests) pass.
+    - **DEF-05 — anti-circularity & leakage audits**: verified complete.
+      `src/daph_learning/evaluation/manifest.py` enforces
+      `validate(manifest, headline=True)` and rejects any test-split run
+      where `vector.capture_dataset_sha256 == dataset.sha256`.
+      `src/daph_learning/evaluation/leakage.py` provides `detect_leakage()`
+      (exact, normalized, family, template, fingerprint overlap) and
+      `family_aware_split()`. 31 dedicated tests pass.
+    - **DEF-04 — real-model GPU qualification**: pipeline validated
+      end-to-end on CPU with the release-gates checker
+      (`experiments/daph_latent_memory_v0_5_2/scripts/check_release_gates.py`)
+      and dataset generator (`generate_dataset.py`). All 6 release gates
+      (specificity, corruption, semantic mismatch, OOD benefit,
+      non-catastrophic degradation, reproducibility) correctly pass when
+      criteria are met and fail when not. The actual multi-seed GPU
+      training on Qwen2.5-1.5B/3B-Instruct requires GPU hardware and is
+      the remaining deferred execution step.
 - **AutoLearn v2 — empirical counterfactual policy learning**: replaced the
   contrastive-vector loop with a reward-gap-driven incremental update system.
   New modules under `src/daph_learning/autolearn_v2/`:

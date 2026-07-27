@@ -19,6 +19,7 @@ from daph_learning.routing.logit_router import score_route_batch_from_logits
 from daph_learning.routing.steered_router import build_route_prompt, parse_route_action
 from daph_learning.steering.anchors import find_anchor_token_index
 from daph_learning.steering.hooks import (
+    SafetyLimits,
     multi_layer_residual_addition_hook,
     validate_vector_for_model,
 )
@@ -184,8 +185,23 @@ def _generate_batch(
     prompt_format: str = "raw",
     steering_anchor: str | None = None,
     telemetry_sink: list | None = None,
+    decay_schedule: str = "none",
+    decay_steps: int = 0,
+    decay_min_multiplier: float = 0.0,
+    safety_limits: Any | None = None,
 ) -> list[str]:
     """Generate a batch of completions with optional composite steering.
+
+    v0.3.8 Task 2.2: when ``decay_schedule`` is not ``"none"`` and
+    ``steering_scope="all"``, the effective alpha is attenuated over
+    generated-token positions via :func:`decay_multiplier`. The default
+    ``"cosine"`` schedule with ``decay_steps=16`` and
+    ``min_multiplier=0.1`` matches the v0.3.8 repair plan §2 Task 2.2 and
+    eliminates the autoregressive repetition loops caused by persistent
+    ``token_scope="all"`` steering.
+
+    v0.3.8 DEF-02: when ``safety_limits`` is provided, the hook auto-clamps
+    alpha so ``R_pert ≤ 0.65``. See :class:`SafetyLimits`.
 
     If ``telemetry_sink`` is provided, per-layer activation statistics
     (|h|, |αv|, |αv|/|h|, cos shift) are appended on each forward pass
@@ -254,6 +270,16 @@ def _generate_batch(
                 "alpha": alpha,
                 "token_scope": steering_scope,
                 "target_token_index": target_indices,
+                # v0.3.8 Task 2.2: forward decay schedule to the hook so
+                # token_scope="all" reasoning steering attenuates over
+                # generated tokens instead of pinning the model into a
+                # repetition loop.
+                "decay_schedule": decay_schedule,
+                "decay_steps": decay_steps,
+                "decay_min_multiplier": decay_min_multiplier,
+                # v0.3.8 DEF-02: forward safety limits so the hook
+                # auto-clamps alpha when R_pert > 0.65.
+                "safety_limits": safety_limits,
             }
             for vector, alpha in zip(vectors, alphas)
         ]
@@ -286,6 +312,10 @@ def _generate(
     prompt_format: str = "raw",
     steering_alpha_override: float | None = None,
     steering_anchor: str | None = None,
+    decay_schedule: str = "none",
+    decay_steps: int = 0,
+    decay_min_multiplier: float = 0.0,
+    safety_limits: Any | None = None,
 ) -> str:
     """Backward-compatible single-item wrapper used by tests and utilities."""
     vectors = [steering_vector] if steering_vector is not None else []
@@ -305,6 +335,10 @@ def _generate(
         steering_scope=steering_scope,
         prompt_format=prompt_format,
         steering_anchor=steering_anchor,
+        decay_schedule=decay_schedule,
+        decay_steps=decay_steps,
+        decay_min_multiplier=decay_min_multiplier,
+        safety_limits=safety_limits,
     )[0]
 
 
@@ -353,6 +387,44 @@ def main() -> None:
     ap.add_argument(
         "--steering-vector",
         help="Deprecated alias for --reasoning-steering-vector",
+    )
+    # v0.3.8 Task 2.2: decay scheduling for reasoning steering. The default
+    # "cosine" schedule with decay_steps=16 and min_multiplier=0.1 matches
+    # the v0.3.8 repair plan §2 Task 2.2 and eliminates the autoregressive
+    # repetition loops caused by persistent token_scope="all" steering.
+    ap.add_argument(
+        "--reasoning-decay-schedule",
+        choices=["none", "linear", "exponential", "cosine"],
+        default="cosine",
+        help=(
+            "v0.3.8: decay schedule for reasoning-policy steering "
+            "(token_scope='all'). 'cosine' (default) attenuates the "
+            "effective alpha over generated tokens so the intervention "
+            "fades out instead of pinning the model into a repetition "
+            "loop. 'none' preserves the v0.3.5 constant-alpha behavior."
+        ),
+    )
+    ap.add_argument(
+        "--reasoning-decay-steps",
+        type=int,
+        default=16,
+        help="Generated-token positions over which the decay schedule ramps down.",
+    )
+    ap.add_argument(
+        "--reasoning-decay-min-multiplier",
+        type=float,
+        default=0.1,
+        help="Asymptotic / final alpha multiplier after decay (0.1 = 10%% strength).",
+    )
+    ap.add_argument(
+        "--no-safety-clamp",
+        action="store_true",
+        help=(
+            "v0.3.8 DEF-02: disable the automatic alpha clamp that keeps "
+            "R_pert = |αv|/|h| ≤ 0.65. Disabling is NOT recommended for "
+            "production reasoning steering; it restores the unbounded-alpha "
+            "behavior that causes residual-stream drift and repetition."
+        ),
     )
 
     ap.add_argument("--prompt-format", choices=["raw", "chat"], default="raw")
@@ -465,6 +537,11 @@ def main() -> None:
         reasoning_vectors,
         args.reasoning_steering_alpha,
     )
+
+    # v0.3.8 DEF-02: build the safety-limits config for reasoning steering.
+    # The clamp keeps R_pert = |αv|/|h| ≤ 0.65 to prevent residual-stream
+    # drift. Operators can disable it with --no-safety-clamp (not recommended).
+    reasoning_safety_limits = None if args.no_safety_clamp else SafetyLimits()
 
     tasks = _load_tasks(Path(args.input))
     memory = _load_memory(
@@ -695,6 +772,10 @@ def main() -> None:
                         steering_scope="all",
                         prompt_format=args.prompt_format,
                         steering_alpha_override=alpha,
+                        decay_schedule=args.reasoning_decay_schedule,
+                        decay_steps=args.reasoning_decay_steps,
+                        decay_min_multiplier=args.reasoning_decay_min_multiplier,
+                        safety_limits=reasoning_safety_limits,
                     )
                 ]
             else:
@@ -708,6 +789,10 @@ def main() -> None:
                     steering_alphas=reasoning_alphas,
                     steering_scope="all",
                     prompt_format=args.prompt_format,
+                    decay_schedule=args.reasoning_decay_schedule,
+                    decay_steps=args.reasoning_decay_steps,
+                    decay_min_multiplier=args.reasoning_decay_min_multiplier,
+                    safety_limits=reasoning_safety_limits,
                 )
             for (index, _), output in zip(batch, generated):
                 outputs[index] = output

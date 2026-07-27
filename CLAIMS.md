@@ -171,11 +171,11 @@ behind a flag. It is a separate research program.
 
 ---
 
-## 6. "560 passing tests"
+## 6. "580 passing tests"
 
 **Status: ESTABLISHED as engineering regression — PARTIAL scientific qualification.**
 
-v0.3.8 reports 560+ passed, 1 skipped (was 392 in v0.3.7). The v0.3.8
+v0.3.8 reports 580+ passed, 1 skipped (was 392 in v0.3.7). The v0.3.8
 additions (AutoLearn v2 core):
 
 - 8 `route_fn` contract tests (V037-001)

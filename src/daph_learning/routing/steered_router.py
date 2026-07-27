@@ -76,6 +76,77 @@ def detect_route_prompt_alignment(rendered_prompt: str) -> tuple[str, bool]:
     return rendered_prompt, True
 
 
+def resolve_route_label_token_sequences(
+    tokenizer,
+    rendered_prompt: str,
+    *,
+    symbolic_label: str = "SYMBOLIC",
+    llm_label: str = "LLM",
+    leading_space: bool | None = None,
+) -> tuple[list[int], list[int], bool]:
+    """v0.3.8 DEF-01: resolve the FULL continuation token sequence per label.
+
+    Unlike :func:`resolve_route_token_ids_contextual` (which returns only the
+    first continuation token), this returns the complete tail token-ID list
+    for each route label. This is the input to full-sequence logit scoring:
+
+        Score(Label | x) = sum_j log P(t_j | x, t_<j)
+
+    which eliminates the single-token contrast failure on multi-token
+    BPE/SentencePiece tokenizers (e.g. Qwen2.5 ``"SYMBOLIC"`` →
+    ``[" SY", "MBOL", "IC"]``).
+
+    Returns ``(symbolic_tail_ids, llm_tail_ids, leading_space_used)``.
+
+    When ``leading_space`` is ``None`` both ``" LABEL"`` and ``"LABEL"`` are
+    tried; the first option that yields a non-empty tail for both labels is
+    used. The tails are guaranteed non-empty and the two tails must not be
+    identical (otherwise the labels are indistinguishable).
+    """
+    options = [leading_space] if leading_space is not None else [True, False]
+    if not rendered_prompt:
+        raise ContextBoundaryError(
+            "sequence resolver requires a non-empty rendered prompt to "
+            "derive the continuation token sequence"
+        )
+    base_ids = tokenizer.encode(rendered_prompt, add_special_tokens=True)
+    base_len = len(base_ids)
+    attempts: list[str] = []
+    for try_space in options:
+        prefix = " " if try_space else ""
+        sym_ids = tokenizer.encode(rendered_prompt + prefix + symbolic_label, add_special_tokens=True)
+        llm_ids = tokenizer.encode(rendered_prompt + prefix + llm_label, add_special_tokens=True)
+        sym_tail = sym_ids[base_len:]
+        llm_tail = llm_ids[base_len:]
+        attempts.append(
+            f"{prefix + symbolic_label!r}: tail={sym_tail}, "
+            f"{prefix + llm_label!r}: tail={llm_tail}"
+        )
+        if sym_tail and llm_tail and sym_tail != llm_tail:
+            return sym_tail, llm_tail, try_space
+    raise MultiTokenRouteError(
+        f"could not resolve distinct non-empty continuation token sequences "
+        f"for {symbolic_label!r} and {llm_label!r}; attempts: " + "; ".join(attempts)
+    )
+
+
+def route_action_from_sequence_scores(
+    symbolic_score: float,
+    llm_score: float,
+    *,
+    threshold: float = 0.0,
+) -> tuple[RouteAction, float]:
+    """v0.3.8 DEF-01: resolve a route from full-sequence log-prob scores.
+
+    ``symbolic_score`` and ``llm_score`` are ``Score(Label | x)`` values
+    (sums of log probabilities over the complete label token sequence).
+    Returns ``(action, margin)`` where
+    ``margin = Score(SYMBOLIC | x) - Score(LLM | x)``.
+    """
+    margin = float(symbolic_score) - float(llm_score)
+    return ("symbolic" if margin > threshold else "llm"), margin
+
+
 def route_action_from_logits(
     logits,
     symbolic_token_id: int,
